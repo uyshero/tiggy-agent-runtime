@@ -12,13 +12,14 @@ const (
 	DefaultMemoryMaxBytes   = 64 << 20
 )
 
+// MemoryOptions 配置进程内 Journal 的条数与字节上限。
 type MemoryOptions struct {
 	MaxEntries int
 	MaxBytes   int
 }
 
-// MemoryJournal is a bounded, process-local Journal for tests and diagnostics.
-// It never evicts Entries and loses all data when the process exits.
+// MemoryJournal 是有界、进程内的 Journal，用于测试与诊断。
+// 永不淘汰 Entry；进程退出即丢失全部数据。
 type MemoryJournal struct {
 	mu         sync.RWMutex
 	maxEntries int
@@ -29,6 +30,7 @@ type MemoryJournal struct {
 	eventIDs   map[string]map[string]struct{}
 }
 
+// NewMemoryJournal 构造 MemoryJournal；零值边界使用默认值。
 func NewMemoryJournal(options MemoryOptions) (*MemoryJournal, error) {
 	maxEntries := options.MaxEntries
 	if maxEntries == 0 {

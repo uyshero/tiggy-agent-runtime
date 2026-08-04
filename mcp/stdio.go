@@ -20,8 +20,8 @@ const (
 	defaultTerminateDuration   = 5 * time.Second
 )
 
-// StdioOptions configures an MCP server subprocess. Path and Directory must
-// be absolute. A nil Environment is an empty environment, not host inheritance.
+// StdioOptions 配置 MCP 服务器子进程。Path 与 Directory 必须为绝对路径。
+// Environment 为 nil 表示空环境，而不是继承宿主环境。
 type StdioOptions struct {
 	Implementation    Implementation
 	Path              string

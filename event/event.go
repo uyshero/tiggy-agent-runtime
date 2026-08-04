@@ -1,4 +1,4 @@
-// Package event defines the versioned Agent runtime lifecycle protocol.
+// Package event 定义版本化的 Agent Runtime 生命周期协议。
 package event
 
 import (
@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
+// Type 标识事件种类；载荷 schema 按 Type 与 ProtocolVersion 版本化。
 type Type string
 
-// Sink consumes events synchronously in sequence order. Returning an error
-// aborts the run. A sink must return promptly or provide its own bounded I/O.
+// Sink 按序号同步消费事件；返回错误会中止 Run。
+// Sink 必须快速返回，或自行提供有界 I/O。
 type Sink func(Event) error
 
 const (
@@ -19,6 +20,9 @@ const (
 	RunCompleted               Type = "run.completed"
 	RunFailed                  Type = "run.failed"
 	RunCanceled                Type = "run.canceled"
+	RunSuspended               Type = "run.suspended"
+	ApprovalRequired           Type = "approval.required"
+	ApprovalResolved           Type = "approval.resolved"
 	ModelCallStarted           Type = "model.call.started"
 	ModelCallDelta             Type = "model.call.delta"
 	ModelCallCompleted         Type = "model.call.completed"
@@ -44,8 +48,7 @@ const (
 	RuntimeError               Type = "runtime.error"
 )
 
-// Event is the stable lifecycle envelope. Payload schemas are versioned by
-// Type and ProtocolVersion rather than by Go's any type.
+// Event 是稳定的生命周期信封；载荷 schema 由 Type/ProtocolVersion 版本化，而非 Go any。
 type Event struct {
 	ProtocolVersion string          `json:"protocol_version"`
 	ID              string          `json:"id"`
@@ -57,6 +60,7 @@ type Event struct {
 	Payload         json.RawMessage `json:"payload,omitempty"`
 }
 
+// Validate 检查信封必填字段与 Payload JSON 合法性。
 func (e Event) Validate() error {
 	if strings.TrimSpace(e.ProtocolVersion) == "" || strings.TrimSpace(e.ID) == "" || strings.TrimSpace(e.RunID) == "" {
 		return fmt.Errorf("protocol version, event id, and run id are required")
@@ -77,5 +81,5 @@ func (e Event) Validate() error {
 }
 
 func (e Event) Terminal() bool {
-	return e.Type == RunCompleted || e.Type == RunFailed || e.Type == RunCanceled
+	return e.Type == RunCompleted || e.Type == RunFailed || e.Type == RunCanceled || e.Type == RunSuspended
 }

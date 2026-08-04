@@ -27,6 +27,7 @@ const (
 	defaultMaxActivationBytes   = 512 << 10
 )
 
+// Limits 限制目录扫描与激活时可读入的 Skill 体积。
 type Limits struct {
 	MaxSkills            int
 	MaxManifestBytes     int64
@@ -36,6 +37,7 @@ type Limits struct {
 	MaxActivationBytes   int64
 }
 
+// DefaultLimits 返回 Skill Catalog 的标准边界。
 func DefaultLimits() Limits {
 	return Limits{
 		MaxSkills: defaultMaxSkills, MaxManifestBytes: defaultMaxManifestBytes,

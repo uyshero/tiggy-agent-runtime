@@ -3,7 +3,7 @@
 ## API and Ownership
 
 - `agent.New` validates an immutable Agent configuration. One Agent may be reused concurrently when its injected Model and Tools support concurrent calls.
-- `Run` starts with empty state. `Continue` accepts only complete state with no pending tool calls.
+- `Run` starts with empty state. `Continue` accepts only complete state with no pending tool calls. `Resume` accepts only a validated approval Suspension and an exact set of decisions.
 - Each run copies input state, model requests, Toolkit definitions, and returned values so retained slices cannot mutate an active run.
 - The Toolkit is snapshotted at run start. Registrations made during a run affect later runs only.
 - Activated Skills are immutable Agent configuration. Their instructions enter only the initial System Message; `run.started` records name/version/digest provenance without content bodies.
@@ -11,7 +11,7 @@
 - An optional per-model Context Compressor may replace only Core-selected inactive history groups in the provider request view. Full State remains unchanged.
 - An optional Artifact Offloader runs after a successful Tool call and before its Result enters State. Offloaded State contains a digest-bound reference; the complete Result remains in the injected Store.
 - An optional Memory Port recalls once before model execution and observes once after successful response commit. Recalled evidence changes only the model request view; observation receives only messages created in the current turn.
-- `Result.State` is an independent snapshot for application-managed `Continue`; it is not a durable recovery protocol.
+- `Result.State` is an independent snapshot for application-managed `Continue` or `Resume`; serialization alone does not provide durable scheduling.
 
 ## Execution and Failure
 
@@ -24,7 +24,17 @@ Tool failures have two classes:
 - `tool.Error` is sanitized and model-actionable. It becomes `ToolResult(IsError=true)` and execution continues.
 - ordinary errors, panics, and invalid tool results are runtime failures. The runtime appends a safe interrupted Tool Result and terminates.
 
-Every terminal path closes pending tool calls, so returned state has no dangling call.
+Completed, failed, and canceled paths close pending tool calls. A
+`StatusSuspended` result intentionally retains one digest-bound pending Tool
+batch and terminates the current invocation with `run.suspended`; see
+[Tool approval and resume semantics](./approval.md).
+
+An optional `ApprovalPolicy` evaluates the complete model-produced Tool batch
+before any call in that batch executes. A required decision suspends the whole
+batch with zero batch side effects. Resume validates the argument and Tool
+definition digests, applies every required decision exactly once in original
+order, and does not call the Policy again. Rejection becomes a model-visible
+Tool Error rather than a Runtime failure.
 
 Artifact offload applies only to successful Tool Results. Safe model-actionable Tool errors remain inline. A configured Offloader receives an owned, versioned payload and is invoked at most once per Result; Store/Offloader failures, invalid Decisions, payload limits, and cancellation never fall back to silently inlining a result that violated the configured boundary. The runtime appends an explicit error Tool Result and terminates. Because cancellation can race with a completed Put, the Store may contain an unreferenced object; Core does not issue an automatic Delete.
 
@@ -68,7 +78,7 @@ On overflow, a configured Compressor gets one attempt, followed by mandatory rep
 
 ## Event Sink
 
-The Sink consumes strictly ordered events synchronously. Returning an error means the consumer cannot continue; the runtime stops and sends no further events to that Sink. `Result.Events` retains the runtime's completed diagnostic trace with paired operation events and exactly one terminal event.
+The Sink consumes strictly ordered events synchronously. Returning an error means the consumer cannot continue; the runtime stops and sends no further events to that Sink. `Result.Events` retains the runtime's completed diagnostic trace with paired operation events and exactly one terminal event, including `run.suspended`.
 
 Sink failure semantics:
 
@@ -83,4 +93,7 @@ The optional `record.Recorder` is another strict Sink consumer. It writes each a
 
 ## Current Non-goals
 
-State and events provide in-process correctness and diagnostics. They do not promise crash recovery, cross-process replay, exactly-once external side effects, or a database-backed durable state machine.
+State and events provide in-process correctness and diagnostics. Approval State
+is serializable for application-managed persistence, but Core does not promise
+crash recovery, single-resumer coordination, cross-process replay, exactly-once
+external side effects, or a database-backed durable state machine.

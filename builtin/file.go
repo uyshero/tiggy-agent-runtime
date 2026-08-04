@@ -1,4 +1,4 @@
-// Package builtin provides bounded native tools shipped with the runtime.
+// Package builtin 提供随 Runtime 附带的有界原生工具（读/写/编辑/搜索/Bash 等）。
 package builtin
 
 import (
@@ -15,8 +15,9 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
 
-const maximumPathBytes = 4096
+const maximumPathBytes = 4096 // 路径参数字节上限
 
+// decodeArguments 解析工具入参 JSON：禁止未知字段，且只允许单个 JSON 值。
 func decodeArguments(input json.RawMessage, destination any) error {
 	decoder := json.NewDecoder(bytes.NewReader(input))
 	decoder.DisallowUnknownFields()
@@ -32,6 +33,7 @@ func decodeArguments(input json.RawMessage, destination any) error {
 	return nil
 }
 
+// normalizedFilePath 规范化并拒绝指向 safespace 根目录的路径。
 func normalizedFilePath(path string) (string, error) {
 	if len(path) == 0 || len(path) > maximumPathBytes {
 		return "", invalidArguments(fmt.Errorf("path must contain between 1 and %d bytes", maximumPathBytes))
@@ -46,6 +48,7 @@ func normalizedFilePath(path string) (string, error) {
 	return normalized, nil
 }
 
+// authorize 执行权限检查；拒绝映射为模型可见错误，其它失败为 RuntimeError。
 func authorize(ctx context.Context, policy permission.Policy, name string, action permission.Action, target string) error {
 	err := permission.Check(ctx, policy, permission.Request{Tool: name, Action: action, Target: target})
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -61,6 +64,7 @@ func authorize(ctx context.Context, policy permission.Policy, name string, actio
 	return &tool.RuntimeError{Code: string(permissionError.Code), Cause: err}
 }
 
+// fileSystemError 将 safespace / fs 错误映射为模型可见或 Runtime 错误。
 func fileSystemError(operation string, err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err

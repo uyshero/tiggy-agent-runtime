@@ -8,15 +8,14 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/event"
 )
 
-// LogOptions customizes event severity. Payload bodies are never logged;
-// LogSink emits only selected protocol metadata and safe ErrorPayload fields.
+// LogOptions 自定义事件严重级别。Payload 正文永不落日志；
+// LogSink 只输出选定的协议元数据与安全的 ErrorPayload 字段。
 type LogOptions struct {
 	Level func(event.Event) slog.Level
 }
 
-// LogSink adapts a slog.Logger to the runtime Event Sink contract. Handler
-// errors retain strict Sink semantics; wrap the result with BestEffort when a
-// logging outage must not fail the Run.
+// LogSink 将 slog.Logger 适配为 Runtime Event Sink。
+// Handler 错误保留严格 Sink 语义；日志故障不得导致 Run 失败时，用 BestEffort 包装。
 func LogSink(logger *slog.Logger, options LogOptions) (event.Sink, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("logger is required")
@@ -60,7 +59,8 @@ func defaultLogLevel(eventType event.Type) slog.Level {
 		event.CompressionStarted, event.ToolResultOffloadStarted,
 		event.MemoryRecallStarted, event.MemoryObserveStarted:
 		return slog.LevelDebug
-	case event.RunCanceled, event.RetryScheduled, event.FallbackActivated, event.LimitReached:
+	case event.RunCanceled, event.RetryScheduled, event.FallbackActivated, event.LimitReached,
+		event.ApprovalRequired:
 		return slog.LevelWarn
 	case event.RunFailed, event.RuntimeError, event.CompressionFailed,
 		event.ToolResultOffloadFailed, event.MemoryObserveFailed:
@@ -82,7 +82,7 @@ func logAttributes(value event.Event) ([]slog.Attr, error) {
 			slog.Int("skill.count", len(payload.Skills)),
 			slog.Int("tool_group.count", len(payload.ToolGroups)),
 		}, nil
-	case event.RunCompleted, event.RunFailed, event.RunCanceled:
+	case event.RunCompleted, event.RunFailed, event.RunCanceled, event.RunSuspended:
 		payload, err := decode[event.RunTerminalPayload](value)
 		if err != nil {
 			return nil, err
@@ -96,6 +96,18 @@ func logAttributes(value event.Event) ([]slog.Attr, error) {
 			slog.Int64("usage.reasoning_tokens", payload.Usage.ReasoningTokens),
 		}
 		return appendErrorAttrs(result, payload.Error), nil
+	case event.ApprovalRequired, event.ApprovalResolved:
+		payload, err := decode[event.ApprovalPayload](value)
+		if err != nil {
+			return nil, err
+		}
+		return []slog.Attr{
+			slog.String("approval.id", payload.ApprovalID),
+			slog.String("approval.status", payload.Status),
+			slog.String("suspension.id", payload.SuspensionID),
+			slog.String("tool.call_id", payload.CallID),
+			slog.String("tool.name", payload.Tool),
+		}, nil
 	case event.ModelCallStarted, event.ModelCallCompleted:
 		payload, err := decode[event.ModelCallPayload](value)
 		if err != nil {

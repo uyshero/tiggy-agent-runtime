@@ -15,18 +15,20 @@ const (
 	DefaultMaxEventBytes   = 1 << 20
 )
 
-// Journal persists or retains immutable Entries. Append is synchronous and
-// must be concurrency-safe if it is also used outside one Recorder.
+// Journal 持久化或保留不可变 Entry。
+// Append 同步执行；若在 Recorder 外共享使用，必须并发安全。
 type Journal interface {
 	Append(Entry) error
 }
 
+// JournalFunc 将函数适配为 Journal。
 type JournalFunc func(Entry) error
 
 func (f JournalFunc) Append(entry Entry) error {
 	return f(entry.Clone())
 }
 
+// Options 配置 Recorder 的脱敏与活跃 Run 边界。
 type Options struct {
 	Sanitizer       Sanitizer
 	MaxActiveRuns   int
@@ -41,8 +43,8 @@ type activeRun struct {
 	lastSequence int64
 }
 
-// Recorder validates, sanitizes, integrity-links, and appends Event Entries.
-// It may be shared by concurrent Runs; Journal calls are serialized.
+// Recorder 校验、脱敏、完整性链接并追加 Event Entry。
+// 可被并发 Run 共享；对 Journal 的调用串行化。
 type Recorder struct {
 	mu              sync.Mutex
 	journal         Journal
@@ -53,6 +55,7 @@ type Recorder struct {
 	active          map[string]*activeRun
 }
 
+// New 构造 Recorder；Journal 必填，零值边界使用默认值。
 func New(journal Journal, options Options) (*Recorder, error) {
 	if journal == nil {
 		return nil, fmt.Errorf("recording Journal is required")
@@ -83,9 +86,9 @@ func New(journal Journal, options Options) (*Recorder, error) {
 	}, nil
 }
 
-// Sink implements the event.Sink callback shape. Journal or validation errors
-// retain strict Event Sink semantics; wrap Sink with observe.BestEffort only
-// when losing recording data must not fail Agent execution.
+// Sink 实现 event.Sink 回调形态。
+// Journal/校验错误保留严格 Sink 语义；仅当丢失记录数据不得导致 Agent 失败时，
+// 才用 observe.BestEffort 包装。
 func (r *Recorder) Sink(value event.Event) error {
 	if r == nil {
 		return fmt.Errorf("Recorder is required")

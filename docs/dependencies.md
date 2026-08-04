@@ -17,6 +17,7 @@ message
 model
 event
 permission
+approval
 command
 agent state and runtime contracts
 ```
@@ -32,6 +33,10 @@ Agent, Toolkit, built-in Tool, context, artifact, memory, and observation packag
 Provider, MCP, OpenTelemetry, vector-store, remote FileSystem, and isolated Command Runner adapters may depend on their official or established client libraries. Adapter dependencies must not leak into foundation packages. The `mcp` package exposes only Tiggy and standard-library types even though its private transport adapter imports the official SDK.
 
 `command/local` is the standard-library local-process adapter. It depends only on `command`, `safespace`, and `os/exec`; it adds no module dependency. Importing it is an explicit application choice, not a transitive requirement of `builtin.bash`.
+
+`approval` uses JSON validation, SHA-256, copied standard-library values, and
+panic containment only. It does not include an identity provider, database,
+notification client, scheduler, or UI dependency.
 
 `skill` uses strict standard-library JSON parsing and the standard-library-only `safespace.Reader` contract. Skill discovery and activation add no Go module, YAML parser, package manager, or Node.js dependency. See [ADR 0005](./adr/0005-strict-skill-manifest.md).
 
@@ -96,6 +101,14 @@ No library is preselected merely by category. Before implementation, create an A
 - Public releases must be reproducible without neighboring repositories.
 - Temporary local `replace` directives belong in a developer `go.work`, not in release `go.mod`.
 
+## License Compliance
+
+The complete non-main module list selected by `go list -m all`, including indirect and test-only modules, is reviewed in [`licenses/go-modules.txt`](../licenses/go-modules.txt). Each entry binds an exact module version to its SPDX license expression. `make licenses` compares the current build list with that manifest, and `make verify` enforces it in normal CI. A new module or version therefore fails closed until its source and license are reviewed.
+
+The approved baseline contains Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, and ISC dependencies. Two distributions require explicitly reviewed mixed expressions: the MCP SDK contains Apache-2.0 and legacy MIT code plus CC-BY-4.0 documentation, while `gopkg.in/yaml.v3` contains MIT-derived and Apache-2.0 files. Preserve all notices and attribution required by those upstream distributions.
+
+GPL, AGPL, LGPL, SSPL, unknown, custom, and any other unreviewed license are prohibited by default. Adding another license or mixed expression requires legal/owner review, a documented compatibility decision, and an intentional update to both the policy and manifest. The script is a deterministic admission gate, not a substitute for legal review or a source-level license scanner.
+
 ## Security Automation
 
-Before the first public release, CI must add vulnerability and license checks. A failing vulnerability check may be waived only with a documented assessment, owner, expiry date, and compensating control.
+Normal CI runs the dependency-license gate through `make verify` and the pinned vulnerability scan through `make vuln`. A failing vulnerability check may be waived only with a documented assessment, owner, expiry date, and compensating control.

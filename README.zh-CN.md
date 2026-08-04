@@ -14,7 +14,7 @@ Go 应用 -> import 本模块 -> 在当前进程直接运行 Agent
 
 ## 当前状态
 
-P3 已完成。仓库当前提供与 Provider 无关的协议、有边界的顺序 ReAct Loop、Toolkit 和内置执行边界、带外部兼容套件的 MCP Transport、显式 Skill 激活、Token Budget Planning、结构安全 Context Compression、有界大型 Tool Result Offload、Scoped Memory 质量契约、只读 Logging/Metrics/OpenTelemetry Observer、版本化且有完整性链接的 Run Recorder，以及确定性 Context/Memory Fault Injection。当前版本仍未达到生产可用状态。
+P3 已完成。仓库当前提供与 Provider 无关的协议、有边界的顺序 ReAct Loop、Digest 绑定的 Tool 人工审批暂停与恢复、Toolkit 和内置执行边界、带外部兼容套件的 MCP Transport、显式 Skill 激活、Token Budget Planning、结构安全 Context Compression、有界大型 Tool Result Offload、Scoped Memory 质量契约、只读 Logging/Metrics/OpenTelemetry Observer、版本化且有完整性链接的 Run Recorder，以及确定性 Context/Memory Fault Injection。当前版本仍未达到生产可用状态。
 
 ## Go Module
 
@@ -34,6 +34,7 @@ agent/    有边界的 Agent Loop、State、结构化 RunError 和 Event
 agenttest/ 确定性 Model、Tool、时钟、ID、故障注入和 Trace 校验
 safespace/ Root 约束、本地有界读写和确定性目录列表
 permission/ 进程内 Tool 外部效果决策和 Action 白名单
+approval/ 整批 Tool 审批决策和可序列化 Continuation
 builtin/  Runtime 自带的有界、权限感知 Tool
 command/  有界命令协议和显式启用的本地进程适配器
 mcp/      有界 MCP Tool 发现、调用、生命周期、stdio 和 HTTP
@@ -63,7 +64,7 @@ go run ./examples/basic-agent
 make verify
 ```
 
-验证包括格式、依赖边界、`go vet`、单元测试和数据竞争检查。
+验证包括格式、依赖边界与许可证检查、`go vet`、单元测试和数据竞争检查。
 
 发布元数据单独审计，因为其中包含不应阻塞日常开发、且必须由 Owner 决定的事项：
 
@@ -76,6 +77,8 @@ make release-verify RELEASE_VERSION=v0.1.0
 
 ## 设计文档
 
+- [快速开始与集成手册](./docs/getting-started.zh-CN.md)
+- [项目介绍：让 Agent 稳定运行，而不只是跑起来](./docs/introducing-tiggy-agent-runtime.zh-CN.md)
 - [架构与边界](./docs/architecture.zh-CN.md)
 - [依赖准入规则](./docs/dependencies.zh-CN.md)
 - [工程标准](./docs/standards.zh-CN.md)
@@ -83,6 +86,7 @@ make release-verify RELEASE_VERSION=v0.1.0
 - [Toolkit 语义](./docs/toolkit.zh-CN.md)
 - [SafeSpace 语义](./docs/safespace.zh-CN.md)
 - [Permission Policy 语义](./docs/permission.zh-CN.md)
+- [Tool 人工审批与恢复语义](./docs/approval.zh-CN.md)
 - [Command Runner 语义](./docs/command.zh-CN.md)
 - [MCP Client 语义](./docs/mcp.zh-CN.md)
 - [Skill 语义](./docs/skill.zh-CN.md)
@@ -92,6 +96,7 @@ make release-verify RELEASE_VERSION=v0.1.0
 - [可观测性语义](./docs/observe.zh-CN.md)
 - [Run Recorder 语义](./docs/record.zh-CN.md)
 - [Context 与 Memory 故障注入](./docs/fault-injection.zh-CN.md)
+- [Agent 测试工具手册](./docs/agenttest.zh-CN.md)
 - [内置 Tool 语义](./docs/builtin.zh-CN.md)
 - [提取与迁移计划](./docs/migration.md)
 - [路线图](./docs/roadmap.md)
@@ -116,4 +121,4 @@ make release-verify RELEASE_VERSION=v0.1.0
 
 `tiggy-manage-agent` 是 Enterprise 服务，可以单向依赖本模块。本模块禁止依赖 Enterprise 仓库、数据库 Schema、Worker Runtime、OpenAPI 服务契约和租户模型。
 
-独立公开分发所需的许可证尚未确定。在仓库所有权和许可证完成审批前，不得公开发布本模块。
+项目采用 Apache-2.0 许可证。公开发布仍是由 Owner 显式控制的独立操作；准备好版本记录不代表版本已经发布。

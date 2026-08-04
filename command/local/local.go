@@ -1,4 +1,4 @@
-// Package local provides an explicit opt-in os/exec Command Runner.
+// Package local 提供显式 opt-in 的 os/exec Command Runner。
 package local
 
 import (
@@ -23,9 +23,8 @@ const (
 	defaultWaitDelay      = 2 * time.Second
 )
 
-// Options configures a local shell process. RootPath and an absolute ShellPath
-// are required. A nil Environment uses a small non-secret default; a non-nil
-// slice is copied and used exactly.
+// Options 配置本地 shell 进程。RootPath 与绝对 ShellPath 必填。
+// Environment 为 nil 使用小型非机密默认环境；非 nil 切片会被拷贝并原样使用。
 type Options struct {
 	RootPath       string
 	ShellPath      string
@@ -35,8 +34,8 @@ type Options struct {
 	WaitDelay      time.Duration
 }
 
-// Runner starts one local shell process per request. RootPath constrains only
-// the initial working directory; Runner is not a filesystem or process sandbox.
+// Runner 每次请求启动一个本地 shell 进程。
+// RootPath 只约束初始工作目录；Runner 不是文件系统或进程沙箱。
 type Runner struct {
 	rootPath       string
 	shellPath      string

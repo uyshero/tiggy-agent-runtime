@@ -14,20 +14,20 @@ import (
 )
 
 const (
-	// EditToolName is the stable model-visible name of EditTool.
+	// EditToolName 是 EditTool 对模型可见的稳定名称。
 	EditToolName = "builtin.edit"
-	// DefaultMaxEditBytes bounds both input and resulting file content.
+	// DefaultMaxEditBytes 同时限制输入片段与编辑后文件大小（默认 1 MiB）。
 	DefaultMaxEditBytes int64 = 1 << 20
 )
 
-// EditOptions configures an EditTool. A nil Permission denies every call.
+// EditOptions 配置 EditTool；Permission 为 nil 时拒绝所有调用。
 type EditOptions struct {
 	FileSystem safespace.FileSystem
 	Permission permission.Policy
 	MaxBytes   int64
 }
 
-// EditTool replaces exact UTF-8 text in an existing file.
+// EditTool 在已有 UTF-8 文件中做精确文本替换。
 type EditTool struct {
 	fileSystem safespace.FileSystem
 	permission permission.Policy
@@ -36,7 +36,7 @@ type EditTool struct {
 
 var _ tool.Tool = (*EditTool)(nil)
 
-// NewEdit constructs a bounded exact-text editor.
+// NewEdit 构造有界精确文本编辑工具。
 func NewEdit(options EditOptions) (*EditTool, error) {
 	if options.FileSystem == nil {
 		return nil, fmt.Errorf("edit tool filesystem is required")

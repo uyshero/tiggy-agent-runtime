@@ -6,26 +6,32 @@ import (
 
 const ProtocolV1 = "tiggy.runtime.event.v1"
 
+// RunStartedPayload 是 run.started 事件载荷。
 type RunStartedPayload struct {
-	Agent      string                  `json:"agent"`
-	Skills     []ActivatedSkillPayload `json:"skills,omitempty"`
-	ToolGroups []string                `json:"tool_groups,omitempty"`
+	Agent          string                  `json:"agent"`
+	Skills         []ActivatedSkillPayload `json:"skills,omitempty"`
+	ToolGroups     []string                `json:"tool_groups,omitempty"`
+	ContinuationID string                  `json:"continuation_id,omitempty"`
 }
 
+// ActivatedSkillPayload 记录本次 Run 已激活 Skill 的摘要。
 type ActivatedSkillPayload struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Digest  string `json:"digest"`
 }
 
+// RunTerminalPayload 是 Run 终态事件（completed/failed/canceled/suspended）载荷。
 type RunTerminalPayload struct {
-	Status     string        `json:"status"`
-	Reason     string        `json:"reason,omitempty"`
-	Iterations int           `json:"iterations"`
-	Usage      model.Usage   `json:"usage"`
-	Error      *ErrorPayload `json:"error,omitempty"`
+	Status       string        `json:"status"`
+	Reason       string        `json:"reason,omitempty"`
+	Iterations   int           `json:"iterations"`
+	Usage        model.Usage   `json:"usage"`
+	Error        *ErrorPayload `json:"error,omitempty"`
+	SuspensionID string        `json:"suspension_id,omitempty"`
 }
 
+// ErrorPayload 是可安全展示的错误摘要。
 type ErrorPayload struct {
 	Class     string `json:"class"`
 	Code      string `json:"code,omitempty"`
@@ -33,6 +39,7 @@ type ErrorPayload struct {
 	Retryable bool   `json:"retryable,omitempty"`
 }
 
+// ModelCallPayload 是模型调用开始/完成事件的公共字段。
 type ModelCallPayload struct {
 	CallID     string         `json:"call_id"`
 	Model      model.Identity `json:"model"`
@@ -108,6 +115,19 @@ type ToolCallPayload struct {
 	IsError   bool          `json:"is_error,omitempty"`
 	Retryable bool          `json:"retryable,omitempty"`
 	Error     *ErrorPayload `json:"error,omitempty"`
+}
+
+// ApprovalPayload intentionally excludes raw Tool arguments. ArgumentsDigest
+// binds the Event to the exact call retained in Agent State.
+type ApprovalPayload struct {
+	ApprovalID      string `json:"approval_id"`
+	SuspensionID    string `json:"suspension_id"`
+	CallID          string `json:"call_id"`
+	Tool            string `json:"tool"`
+	ArgumentsDigest string `json:"arguments_digest"`
+	ToolDigest      string `json:"tool_digest"`
+	Status          string `json:"status,omitempty"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 type ToolResultOffloadPayload struct {

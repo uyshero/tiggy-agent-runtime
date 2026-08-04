@@ -12,6 +12,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/message"
 )
 
+// memoryRecall 是单次回忆编排结果：可选投影消息、终止错误与事件原因。
 type memoryRecall struct {
 	projection *message.Message
 	err        *RunError
@@ -19,12 +20,14 @@ type memoryRecall struct {
 	canceled   bool
 }
 
+// memoryObservation 是单次观察编排结果。
 type memoryObservation struct {
 	err      *RunError
 	reason   string
 	canceled bool
 }
 
+// memoryPortPanic 捕获 Memory Port 适配器中的 panic，避免冲垮 Agent 进程。
 type memoryPortPanic struct {
 	operation string
 	value     any
@@ -35,6 +38,8 @@ func (e *memoryPortPanic) Error() string {
 	return fmt.Sprintf("memory %s adapter panic: %v\n%s", e.operation, e.value, e.stack)
 }
 
+// recallMemory 在 Run 开始时调用 Port.Recall，校验结果后投影为内部 System Message。
+// FailureModeDegrade 下普通失败会跳过回忆并继续 Run。
 func (a *Agent) recallMemory(ctx context.Context, runID string, input message.Message, emit *emitter) memoryRecall {
 	if a.config.Memory == nil {
 		return memoryRecall{}
@@ -130,6 +135,7 @@ func (a *Agent) recallMemory(ctx context.Context, runID string, input message.Me
 	return finishMemoryRecall(emit, started.ID, payload, "completed", nil, memoryRecall{projection: &projected})
 }
 
+// finishMemoryRecall 发出 MemoryRecallCompleted，并在 Sink 失败时覆盖为事件错误。
 func finishMemoryRecall(
 	emit *emitter,
 	parentID string,
@@ -148,6 +154,7 @@ func finishMemoryRecall(
 	return result
 }
 
+// observeMemory 在一轮完成后调用 Port.Observe；降级模式下普通失败不终止 Run。
 func (a *Agent) observeMemory(
 	ctx context.Context,
 	runID string,
@@ -222,6 +229,7 @@ func (a *Agent) observeMemory(
 	return memoryObservation{}
 }
 
+// finishMemoryObserveFailure 发出 MemoryObserveFailed；degraded 为真时吞掉业务错误。
 func (a *Agent) finishMemoryObserveFailure(
 	emit *emitter,
 	parentID string,
@@ -247,6 +255,7 @@ func (a *Agent) finishMemoryObserveFailure(
 	}
 }
 
+// callMemoryRecall 隔离 Port.Recall 的 panic，并返回结果深拷贝。
 func callMemoryRecall(ctx context.Context, port memory.Port, request memory.RecallRequest) (result memory.RecallResult, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -257,6 +266,7 @@ func callMemoryRecall(ctx context.Context, port memory.Port, request memory.Reca
 	return result.Clone(), err
 }
 
+// callMemoryObserve 隔离 Port.Observe 的 panic。
 func callMemoryObserve(ctx context.Context, port memory.Port, request memory.ObserveRequest) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -266,6 +276,7 @@ func callMemoryObserve(ctx context.Context, port memory.Port, request memory.Obs
 	return port.Observe(ctx, request.Clone())
 }
 
+// projectRecalledMemory 把回忆投影插到前导 System 消息之后，避免打乱既有系统提示顺序。
 func projectRecalledMemory(messages []message.Message, projection *message.Message) []message.Message {
 	values := message.CloneAll(messages)
 	if projection == nil {

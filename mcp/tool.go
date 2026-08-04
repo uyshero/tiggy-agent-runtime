@@ -12,6 +12,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
 
+// remoteTool 把远程 MCP 工具适配为本地 tool.Tool；Definition 已是 Namespace 限定名。
 type remoteTool struct {
 	client     *Client
 	definition model.ToolDefinition

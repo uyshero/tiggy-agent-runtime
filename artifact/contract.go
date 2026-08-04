@@ -1,4 +1,4 @@
-// Package artifact defines bounded offload contracts for large model-visible values.
+// Package artifact 定义大型模型可见值的有界卸载契约。
 package artifact
 
 import (
@@ -20,13 +20,13 @@ const (
 	ToolResultMediaType = "application/vnd.tiggy.tool-result+json;version=1"
 )
 
-// ToolResultEnvelope is the versioned exact value written to an Artifact Store.
+// ToolResultEnvelope 是写入 Artifact Store 的版本化精确值。
 type ToolResultEnvelope struct {
 	ProtocolVersion string             `json:"protocol_version"`
 	Result          message.ToolResult `json:"result"`
 }
 
-// Request is an owned encoded Tool Result offered to an Offloader.
+// Request 是交给 Offloader 的、已编码且由调用方拥有的 Tool Result。
 type Request struct {
 	RunID     string `json:"run_id"`
 	CallID    string `json:"call_id"`

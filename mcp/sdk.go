@@ -13,7 +13,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
-// Implementation identifies this client to an MCP server.
+// Implementation 向 MCP 服务器标识本客户端。
 type Implementation struct {
 	Name    string
 	Version string

@@ -53,3 +53,5 @@ Context 取消直接返回，并优先于 Policy 结果。Policy 必须在 Conte
 当前全部内置 Tool 都把 `permission_denied` 转成安全且不可重试的 `tool.Error`。`builtin.bash` 针对规范化工作目录请求 `execute`，且永远不把脚本放入 `permission.Request`。非法 Request 和 Policy 故障属于集成错误，以 `tool.RuntimeError` 终止 Tool 调用，不能伪装成普通权限拒绝。
 
 Core 不安装全局 Policy，也不缓存 Decision。调用方拥有 Policy 及其使用的资源。
+
+`permission.Policy` 仍是单个 Tool 执行的资源级授权检查。Agent 级人工审批是独立的执行前闸门，详见 [Tool 人工审批与恢复语义](./approval.zh-CN.md)。

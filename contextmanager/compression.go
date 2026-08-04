@@ -11,7 +11,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
-// CompressionStrategy is the stable identity recorded for one summary policy.
+// CompressionStrategy 是一次摘要策略记录的稳定标识。
 type CompressionStrategy struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
@@ -27,8 +27,8 @@ func (s CompressionStrategy) Validate() error {
 	return nil
 }
 
-// CompressionGroup is an indivisible, ordered history unit. Core builds
-// groups from conversation turns and merges Tool Call/Result relationships.
+// CompressionGroup 是不可分割、有序的历史单元。
+// Core 按对话轮次构建分组，并合并 Tool Call/Result 关系。
 type CompressionGroup struct {
 	StartIndex int               `json:"start_index"`
 	Messages   []message.Message `json:"messages"`

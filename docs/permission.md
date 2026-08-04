@@ -53,3 +53,7 @@ Cancellation is returned directly and takes precedence over a Policy result. A P
 All current built-in tools translate `permission_denied` into a safe, non-retryable `tool.Error`. `builtin.bash` requests `execute` for the canonical working directory and never includes the script in `permission.Request`. Invalid requests and Policy failures are integration failures and terminate the Tool call as `tool.RuntimeError`; they are never presented as an ordinary denial.
 
 Core does not install a global Policy and does not cache decisions. The caller owns the Policy and any resources it uses.
+
+`permission.Policy` remains the resource-level authorization check performed by
+individual Tools. Agent-level human approval is a separate pre-execution gate;
+see [Tool approval and resume semantics](./approval.md).

@@ -1,4 +1,4 @@
-// Package mcp adapts Model Context Protocol servers into native Tools.
+// Package mcp 将 Model Context Protocol 服务器适配为原生 Tool。
 package mcp
 
 import (
@@ -11,13 +11,12 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
-// Connector creates a fresh logical MCP session on each call. Implementations
-// must not reuse a one-shot transport across calls.
+// Connector 每次调用创建全新逻辑 MCP Session；不得跨调用复用一次性传输。
 type Connector interface {
 	Connect(context.Context) (Session, error)
 }
 
-// ConnectorFunc adapts a function to Connector.
+// ConnectorFunc 将函数适配为 Connector。
 type ConnectorFunc func(context.Context) (Session, error)
 
 func (f ConnectorFunc) Connect(ctx context.Context) (Session, error) {

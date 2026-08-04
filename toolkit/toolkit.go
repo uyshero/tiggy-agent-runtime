@@ -1,8 +1,12 @@
-// Package toolkit registers tools and creates immutable per-run views.
+// Package toolkit 负责注册工具，并为每次 Run 生成不可变快照 View。
+//
+// 注册时编译 Input Schema；调用前校验参数。Group 只用于能力投影，不进入 Tool Call 协议。
 package toolkit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,10 +20,12 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
 
+// argumentValidator 是已编译 JSON Schema 的校验入口。
 type argumentValidator interface {
 	Validate(any) error
 }
 
+// registeredTool 保存工具实例、Definition 副本、Schema 校验器与所属 Groups。
 type registeredTool struct {
 	tool       tool.Tool
 	definition model.ToolDefinition
@@ -27,17 +33,20 @@ type registeredTool struct {
 	groups     map[string]struct{}
 }
 
+// Registration 描述一次注册：可选 Namespace 前缀与 Groups 投影标签。
 type Registration struct {
 	Tool      tool.Tool
 	Namespace string
 	Groups    []string
 }
 
+// Toolkit 是并发安全的工具注册表。
 type Toolkit struct {
 	mu    sync.RWMutex
 	tools map[string]registeredTool
 }
 
+// New 构造 Toolkit 并按序注册初始工具。
 func New(values ...tool.Tool) (*Toolkit, error) {
 	kit := &Toolkit{tools: make(map[string]registeredTool, len(values))}
 	for _, value := range values {
@@ -48,10 +57,12 @@ func New(values ...tool.Tool) (*Toolkit, error) {
 	return kit, nil
 }
 
+// Register 使用空 Namespace 注册单个工具。
 func (t *Toolkit) Register(value tool.Tool) error {
 	return t.RegisterWith(Registration{Tool: value})
 }
 
+// RegisterWith 读取 Definition、编译 Schema，并以限定名写入注册表。
 func (t *Toolkit) RegisterWith(registration Registration) error {
 	if registration.Tool == nil {
 		return fmt.Errorf("tool is required")
@@ -90,6 +101,7 @@ func (t *Toolkit) RegisterWith(registration Registration) error {
 	return nil
 }
 
+// Groups 返回当前已注册工具涉及的全部 Group 名称（排序去重）。
 func (t *Toolkit) Groups() []string {
 	if t == nil {
 		return nil
@@ -110,7 +122,7 @@ func (t *Toolkit) Groups() []string {
 	return groups
 }
 
-// View is an immutable registry snapshot owned by one run.
+// View 是一次 Run 持有的不可变注册快照；之后新注册只影响后续 Run。
 type View struct {
 	tools       map[string]registeredTool
 	definitions []model.ToolDefinition
@@ -160,6 +172,22 @@ func (v View) Definitions() []model.ToolDefinition {
 		values[index] = definition.Clone()
 	}
 	return values
+}
+
+// DefinitionDigest fingerprints the immutable model-visible Tool contract in
+// this View. It lets approval continuations reject a different Toolkit before
+// executing a previously approved call.
+func (v View) DefinitionDigest(name string) (string, bool) {
+	entry, exists := v.tools[name]
+	if !exists {
+		return "", false
+	}
+	encoded, err := json.Marshal(entry.definition)
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:]), true
 }
 
 func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Result, err error) {

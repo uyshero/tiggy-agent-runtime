@@ -33,7 +33,7 @@ const (
 	MetricLimitCount           = "tiggy.agent.limit.count"
 )
 
-// MetricKind describes how a Recorder aggregates a Measurement.
+// MetricKind 描述 Recorder 如何聚合 Measurement。
 type MetricKind string
 
 const (
@@ -41,8 +41,8 @@ const (
 	MetricHistogram MetricKind = "histogram"
 )
 
-// Attribute is a bounded-cardinality metric dimension. Runtime and Event IDs,
-// error codes, Scope keys, and free-form reasons are intentionally excluded.
+// Attribute 是有界基数的指标维度。
+// Runtime/Event ID、错误码、Scope key 与自由文本 reason 有意排除。
 type Attribute struct {
 	Key   string
 	Value string
@@ -162,7 +162,7 @@ func (m *Metrics) apply(value event.Event) ([]Measurement, error) {
 		}
 		m.runs[value.RunID] = runMeasurementState{started: value.CreatedAt, agent: payload.Agent}
 		return nil, nil
-	case event.RunCompleted, event.RunFailed, event.RunCanceled:
+	case event.RunCompleted, event.RunFailed, event.RunCanceled, event.RunSuspended:
 		return m.finishRun(value)
 	case event.ModelCallStarted, event.ToolCallStarted, event.ContextPrepareStarted,
 		event.CompressionStarted, event.ToolResultOffloadStarted,

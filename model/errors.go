@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// ErrorClass 对供应商失败做稳定分类，供 FailurePolicy 决策。
 type ErrorClass string
 
 const (
@@ -25,6 +26,7 @@ const (
 	ErrorUnknown        ErrorClass = "unknown"
 )
 
+// ProviderError 是供应商适配器返回的结构化失败；SafeDetail 可对模型/用户展示。
 type ProviderError struct {
 	Class      ErrorClass    `json:"class"`
 	Code       string        `json:"code,omitempty"`

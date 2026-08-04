@@ -11,6 +11,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
+// contextPreparation 是模型调用前的上下文准备结果（可能已压缩）。
 type contextPreparation struct {
 	messages []message.Message
 	err      *RunError
@@ -18,6 +19,7 @@ type contextPreparation struct {
 	canceled bool
 }
 
+// prepareContext 规划上下文；溢出且配置了 Compressor 时尝试压缩，否则失败。
 func (a *Agent) prepareContext(
 	ctx context.Context,
 	target ModelTarget,
@@ -42,6 +44,7 @@ func (a *Agent) prepareContext(
 	return a.compressContext(ctx, target, source, tools, plan, emit)
 }
 
+// compressContext 在不修改 Agent State 的前提下，用 Compressor 生成可放入窗口的候选消息。
 func (a *Agent) compressContext(
 	ctx context.Context,
 	target ModelTarget,

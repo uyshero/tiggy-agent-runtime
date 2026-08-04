@@ -1,4 +1,4 @@
-// Package observe provides read-only consumers for Agent lifecycle events.
+// Package observe 提供 Agent 生命周期事件的只读消费者。
 package observe
 
 import (
@@ -9,13 +9,11 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/event"
 )
 
-// ErrorHandler receives a failure swallowed by BestEffort. It must return
-// promptly. A panic from the handler is contained because diagnostics must not
-// escape the best-effort boundary.
+// ErrorHandler 接收 BestEffort 吞掉的失败；必须快速返回。
+// handler panic 会被隔离，诊断不得冲出 best-effort 边界。
 type ErrorHandler func(error)
 
-// Chain calls each non-nil Sink in order with an owned Event copy. The first
-// error stops the chain and is returned to the Agent's strict Sink boundary.
+// Chain 按顺序调用每个非 nil Sink，并传入事件副本；首个错误停止链路并交回 Agent 严格 Sink 边界。
 func Chain(sinks ...event.Sink) event.Sink {
 	active := make([]event.Sink, 0, len(sinks))
 	for _, sink := range sinks {
@@ -36,9 +34,8 @@ func Chain(sinks ...event.Sink) event.Sink {
 	}
 }
 
-// BestEffort converts Sink errors and panics into diagnostics and always
-// returns nil. Use it for monitoring that must not change Agent execution.
-// Strict audit or delivery consumers should be passed directly to the Agent.
+// BestEffort 将 Sink 错误与 panic 转为诊断并始终返回 nil。
+// 用于不得改变 Agent 执行的监控；严格审计/投递消费者应直接传给 Agent。
 func BestEffort(sink event.Sink, onError ErrorHandler) event.Sink {
 	if sink == nil {
 		return nil

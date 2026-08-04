@@ -69,6 +69,9 @@ safespace
 permission
   -> 仅 Go 标准库
 
+approval
+  -> 仅 Go 标准库
+
 model, message, event
   -> 仅 Go 标准库
 
@@ -91,6 +94,7 @@ tiggy-manage-agent
 - 通过注入 Store Port 实现大型 Tool Result Artifact Offload；
 - Memory Recall、Observe 和质量策略；
 - 结构化异常、Retry 和 Fallback；
+- 进程内 Tool 人工审批暂停与精确调用恢复；
 - 日志、指标、Trace 和 Run Recorder；
 - 确定性测试和故障注入。
 
@@ -101,13 +105,13 @@ tiggy-manage-agent
 - PostgreSQL Schema 和迁移；
 - Worker Queue、Lease 和分布式调度；
 - 数据库级 Durable Agent State Machine；
-- 企业审批、审计导出和计费；
+- 企业审批身份、持久化、协调、审计导出和计费；
 - 生成式 OpenAPI Client SDK。
 
 ## Runtime 不变量
 
 1. 每次 Run 恰好产生一个终止事件。
-2. 每个已接受 Tool Call 都有一个终局结果或明确中断。
+2. 每个已接受 Tool Call 都有一个终局结果、明确中断或经过校验的审批暂停。
 3. Tool Result 引用真实 Tool Call，且不能重复终局。
 4. 取消传播到 Model、MCP、Tool、Memory 和 FileSystem。
 5. 迭代、模型调用、工具调用、Token、输出和 Deadline 均有边界。

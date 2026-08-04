@@ -10,6 +10,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
+// ModelTarget 描述一个可调用的模型绑定及其专用上下文规划/压缩器。
 type ModelTarget struct {
 	Model             model.Model
 	Identity          model.Identity
@@ -17,6 +18,7 @@ type ModelTarget struct {
 	ContextCompressor contextmanager.Compressor
 }
 
+// ModelFailureAction 是 FailurePolicy 对一次模型失败的处置。
 type ModelFailureAction string
 
 const (
@@ -25,6 +27,7 @@ const (
 	ModelFailureFallback ModelFailureAction = "fallback"
 )
 
+// ModelFailure 汇总当前目标、尝试次数与供应商错误，供策略决策。
 type ModelFailure struct {
 	TargetIndex    int
 	TargetCount    int
@@ -33,19 +36,20 @@ type ModelFailure struct {
 	Error          *model.ProviderError
 }
 
+// ModelFailureDecision 是策略输出的动作、延迟与原因。
 type ModelFailureDecision struct {
 	Action ModelFailureAction
 	Delay  time.Duration
 	Reason string
 }
 
+// ModelFailurePolicy 决定模型失败后是失败、重试还是切换 Fallback。
 type ModelFailurePolicy interface {
 	Decide(ModelFailure) ModelFailureDecision
 }
 
-// TransientModelFailurePolicy retries only failures explicitly marked
-// retryable by the provider adapter. It can move to configured fallback models
-// after exhausting attempts for the current target.
+// TransientModelFailurePolicy 仅重试供应商明确标记为可重试的失败；
+// 当前目标尝试耗尽后可切换到已配置的 Fallback 模型。
 type TransientModelFailurePolicy struct {
 	MaxAttemptsPerTarget int
 	BaseDelay            time.Duration

@@ -71,6 +71,9 @@ safespace
 permission
   -> Go standard library only
 
+approval
+  -> Go standard library only
+
 model, message, event
   -> Go standard library only
 
@@ -93,6 +96,7 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - large Tool Result Artifact offload through an injected Store Port;
 - memory recall, observe and quality policies;
 - structured errors, retries and fallback decisions;
+- process-local Tool approval suspension and exact-call resume;
 - logging, metrics, traces and run recording;
 - deterministic testing and fault injection.
 
@@ -103,7 +107,7 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - PostgreSQL schemas and migrations;
 - Worker queues, leases and distributed scheduling;
 - database-level durable Agent execution;
-- enterprise approval records and audit exports;
+- enterprise approval identity, persistence, coordination and audit exports;
 - billing, pricing catalogs and settlement;
 - generated OpenAPI client SDKs.
 
@@ -112,7 +116,7 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 The runtime will be designed around these invariants:
 
 1. A run emits exactly one terminal event.
-2. Every accepted tool call reaches one terminal result or explicit interruption.
+2. Every accepted tool call reaches one terminal result, explicit interruption, or a validated approval suspension.
 3. A tool result references an existing tool call and cannot be terminal twice.
 4. Cancellation propagates to model, MCP, tool, memory, and FileSystem calls.
 5. Iteration, model-call, tool-call, token, output, and deadline limits are bounded.

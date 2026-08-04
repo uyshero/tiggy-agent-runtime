@@ -12,8 +12,8 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// StreamableHTTPOptions configures a Streamable HTTP MCP endpoint. Custom
-// headers are copied and should be used for explicitly supplied credentials.
+// StreamableHTTPOptions 配置 Streamable HTTP MCP 端点。
+// 自定义 Headers 会被拷贝，应用于显式提供的凭据。
 type StreamableHTTPOptions struct {
 	Implementation      Implementation
 	Endpoint            string
@@ -25,8 +25,8 @@ type StreamableHTTPOptions struct {
 	MaxMessageBytes     int64
 }
 
-// NewStreamableHTTPConnector constructs a reusable Streamable HTTP connector.
-// Plain HTTP is rejected unless explicitly enabled or the host is loopback.
+// NewStreamableHTTPConnector 构造可复用的 Streamable HTTP Connector。
+// 明文 HTTP 默认拒绝，除非显式允许或主机为 loopback。
 func NewStreamableHTTPConnector(options StreamableHTTPOptions) (Connector, error) {
 	if err := options.Implementation.validate(); err != nil {
 		return nil, &Error{Code: ErrorInvalidConfig, Cause: err}

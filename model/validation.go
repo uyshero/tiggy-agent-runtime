@@ -8,6 +8,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/message"
 )
 
+// Validate 校验一次模型生成请求的标识、用途、消息与工具定义。
 func (r Request) Validate() error {
 	if strings.TrimSpace(r.RunID) == "" || strings.TrimSpace(r.CallID) == "" {
 		return fmt.Errorf("run id and call id are required")

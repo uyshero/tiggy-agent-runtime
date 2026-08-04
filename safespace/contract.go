@@ -1,4 +1,4 @@
-// Package safespace defines bounded file execution environments for built-in Tools.
+// Package safespace 为内置工具定义有界文件执行环境。
 package safespace
 
 import (
@@ -7,21 +7,21 @@ import (
 	"io/fs"
 )
 
-// Reader is the read-only FileSystem subset used by resource discovery.
+// Reader 是资源发现使用的只读 FileSystem 子集。
 type Reader interface {
 	ReadFile(context.Context, string) ([]byte, error)
 	List(context.Context, string) ([]Entry, error)
 }
 
-// FileSystem is the minimal file-operation contract consumed by tools. Paths
-// use NormalizePath semantics. Implementations define their own containment,
-// permission, and durability guarantees. Use SafeSpace when local access must
-// remain under one root.
+// FileSystem 是工具消费的最小文件操作契约。
+// 路径遵循 NormalizePath 语义；实现自行保证隔离、权限与持久性。
+// 需要本地访问始终落在单一根目录下时，使用 SafeSpace。
 type FileSystem interface {
 	Reader
 	WriteFile(context.Context, string, []byte, fs.FileMode) error
 }
 
+// Entry 描述一次 List 返回的目录项。
 type Entry struct {
 	Name  string      `json:"name"`
 	Path  string      `json:"path"`
@@ -30,6 +30,7 @@ type Entry struct {
 	IsDir bool        `json:"is_dir"`
 }
 
+// ErrorCode 对 safespace 失败做稳定分类。
 type ErrorCode string
 
 const (
@@ -43,6 +44,7 @@ const (
 	ErrorIO           ErrorCode = "io_failure"
 )
 
+// Error 保留操作、路径与底层 Cause。
 type Error struct {
 	Code      ErrorCode
 	Operation string

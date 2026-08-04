@@ -1,4 +1,7 @@
-// Package agent implements a bounded, observable ReAct runtime.
+// Package agent 实现有界、可观测的 ReAct Runtime。
+//
+// Agent 持有不可变 Config；每次 Run 使用 Toolkit 快照、事件发射器与 State，
+// 并按 Limits / FailurePolicy 约束模型调用与工具执行。
 package agent
 
 import (
@@ -9,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uyshero/tiggy-agent-runtime/approval"
 	"github.com/uyshero/tiggy-agent-runtime/artifact"
 	"github.com/uyshero/tiggy-agent-runtime/contextmanager"
 	"github.com/uyshero/tiggy-agent-runtime/memory"
@@ -17,9 +21,13 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/toolkit"
 )
 
+// IDGenerator 生成带前缀的稳定标识（消息、事件、Run 等）。
 type IDGenerator func(prefix string) string
+
+// Clock 可注入的时钟，便于测试；Runtime 会转为 UTC。
 type Clock func() time.Time
 
+// Limits 约束单次 Run 的迭代、调用次数、Token 与墙钟时长。
 type Limits struct {
 	MaxIterations          int
 	MaxModelCalls          int
@@ -31,6 +39,7 @@ type Limits struct {
 	MaxDuration            time.Duration
 }
 
+// DefaultLimits 返回标准有界策略。
 func DefaultLimits() Limits {
 	return Limits{
 		MaxIterations:          20,
@@ -57,6 +66,7 @@ func (l Limits) validate() error {
 	return nil
 }
 
+// Config 描述一次可复用的 Agent 绑定（模型、工具、记忆、审批与边界）。
 type Config struct {
 	Name              string
 	SystemPrompt      string
@@ -71,6 +81,7 @@ type Config struct {
 	Fallbacks         []ModelTarget
 	FailurePolicy     ModelFailurePolicy
 	Toolkit           *toolkit.Toolkit
+	ApprovalPolicy    approval.Policy
 	ToolGroups        []string
 	Skills            *skill.Activation
 	Limits            Limits
@@ -78,10 +89,12 @@ type Config struct {
 	Now               Clock
 }
 
+// Agent 是可并发复用的 Runtime 入口；每次 Run 使用独立 State 与事件序列。
 type Agent struct {
 	config Config
 }
 
+// New 校验并规范化 Config，构造可复用 Agent。
 func New(config Config) (*Agent, error) {
 	config.Name = strings.TrimSpace(config.Name)
 	if config.Name == "" {

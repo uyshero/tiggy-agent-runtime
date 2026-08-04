@@ -1,6 +1,5 @@
-// Package skill discovers and explicitly activates bounded, versioned Agent
-// instruction resources. Skills contain trusted text and capability metadata;
-// they do not execute code or acquire tools by themselves.
+// Package skill 发现并显式激活有界、版本化的 Agent 指令资源。
+// Skill 含受信文本与能力元数据；自身不执行代码，也不自动获取工具。
 package skill
 
 import "encoding/json"
@@ -10,8 +9,7 @@ const (
 	ManifestFile = "skill.json"
 )
 
-// Manifest is the strict on-disk metadata format. Paths are relative to the
-// directory containing skill.json.
+// Manifest 是严格的磁盘元数据格式；路径相对 skill.json 所在目录。
 type Manifest struct {
 	Schema       string             `json:"schema"`
 	Name         string             `json:"name"`
@@ -28,8 +26,7 @@ type ResourceManifest struct {
 	Description string `json:"description,omitempty"`
 }
 
-// Descriptor is immutable discovery metadata returned without instruction or
-// resource content.
+// Descriptor 是不可变发现元数据，不包含指令正文或资源内容。
 type Descriptor struct {
 	Name         string               `json:"name"`
 	Version      string               `json:"version"`

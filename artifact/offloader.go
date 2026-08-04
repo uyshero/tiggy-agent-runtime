@@ -7,27 +7,27 @@ import (
 )
 
 const (
-	// DefaultMaxInlineBytes keeps encoded Tool Results up to 64 KiB inline.
+	// DefaultMaxInlineBytes 将不超过 64 KiB 的编码 Tool Result 保留在行内。
 	DefaultMaxInlineBytes int64 = 64 << 10
-	// DefaultMaxArtifactBytes rejects encoded Tool Results over 16 MiB.
+	// DefaultMaxArtifactBytes 拒绝超过 16 MiB 的编码 Tool Result。
 	DefaultMaxArtifactBytes int64 = 16 << 20
 )
 
-// BoundedOffloaderOptions configures encoded-byte thresholds and storage.
+// BoundedOffloaderOptions 配置编码字节阈值与存储。
 type BoundedOffloaderOptions struct {
 	Store            Store
 	MaxInlineBytes   int64
 	MaxArtifactBytes int64
 }
 
-// BoundedOffloader stores payloads over its inline threshold exactly once.
+// BoundedOffloader 对超过行内阈值的 payload 精确存储一次。
 type BoundedOffloader struct {
 	store       Store
 	maxInline   int64
 	maxArtifact int64
 }
 
-// NewBoundedOffloader validates options and applies documented defaults.
+// NewBoundedOffloader 校验选项并应用文档约定的默认值。
 func NewBoundedOffloader(options BoundedOffloaderOptions) (*BoundedOffloader, error) {
 	if options.Store == nil {
 		return nil, &Error{Code: ErrorInvalidConfig, Cause: fmt.Errorf("artifact store is required")}

@@ -1,4 +1,4 @@
-.PHONY: test test-race vet vuln fmt-check boundaries verify mcp-compat release-audit release-verify
+.PHONY: test test-race vet vuln fmt-check boundaries licenses verify mcp-compat release-audit release-verify
 
 GOCACHE_DIR ?= $(CURDIR)/.gocache
 
@@ -20,7 +20,10 @@ fmt-check:
 boundaries:
 	sh scripts/check-boundaries.sh
 
-verify: fmt-check boundaries vet test test-race
+licenses:
+	sh scripts/check-licenses.sh
+
+verify: fmt-check boundaries licenses vet test test-race
 
 # Metadata and repository checks for a release candidate. Set
 # RELEASE_VERSION=v0.1.0 to also require that exact tag at HEAD.

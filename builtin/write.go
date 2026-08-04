@@ -12,20 +12,20 @@ import (
 )
 
 const (
-	// WriteToolName is the stable model-visible name of WriteTool.
+	// WriteToolName 是 WriteTool 对模型可见的稳定名称。
 	WriteToolName = "builtin.write"
-	// DefaultMaxWriteBytes bounds file content accepted from the model by default.
+	// DefaultMaxWriteBytes 默认限制模型写入内容大小（1 MiB）。
 	DefaultMaxWriteBytes int64 = 1 << 20
 )
 
-// WriteOptions configures a WriteTool. A nil Permission denies every call.
+// WriteOptions 配置 WriteTool；Permission 为 nil 时拒绝所有调用。
 type WriteOptions struct {
 	FileSystem safespace.FileSystem
 	Permission permission.Policy
 	MaxBytes   int64
 }
 
-// WriteTool creates or replaces a bounded UTF-8 file through a FileSystem.
+// WriteTool 通过 FileSystem 创建或覆盖有界 UTF-8 文件。
 type WriteTool struct {
 	fileSystem safespace.FileSystem
 	permission permission.Policy
@@ -34,7 +34,7 @@ type WriteTool struct {
 
 var _ tool.Tool = (*WriteTool)(nil)
 
-// NewWrite constructs a bounded text-file writer.
+// NewWrite 构造有界文本文件写入工具。
 func NewWrite(options WriteOptions) (*WriteTool, error) {
 	if options.FileSystem == nil {
 		return nil, fmt.Errorf("write tool filesystem is required")

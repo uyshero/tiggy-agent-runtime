@@ -9,50 +9,49 @@ import (
 	"time"
 )
 
-// ConflictPolicy controls an admitted Item whose ID already exists in Scope.
+// ConflictPolicy 控制「同一 Scope 下已存在相同 ID」时的接纳策略。
 type ConflictPolicy string
 
 const (
-	ConflictReject          ConflictPolicy = "reject"
-	ConflictKeepExisting    ConflictPolicy = "keep_existing"
-	ConflictReplaceExisting ConflictPolicy = "replace_existing"
+	ConflictReject          ConflictPolicy = "reject"           // 冲突则拒绝整批写入
+	ConflictKeepExisting    ConflictPolicy = "keep_existing"    // 保留已有，跳过新 Item
+	ConflictReplaceExisting ConflictPolicy = "replace_existing" // 用新 Item 替换旧 Item
 )
 
 const (
-	// DefaultInMemoryMaxItems bounds all Items retained by one InMemory Port.
+	// DefaultInMemoryMaxItems 限制单个 InMemory Port 可保留的 Item 总数。
 	DefaultInMemoryMaxItems = 1024
-	// DefaultInMemoryMaxBytes bounds retained Item text to 4 MiB.
+	// DefaultInMemoryMaxBytes 限制保留文本总量（默认 4 MiB）。
 	DefaultInMemoryMaxBytes = 4 << 20
 )
 
-// Admission decides which, if any, Items a completed turn may add. Returning
-// no Items makes Observe read-only. Implementations must be concurrency-safe.
+// Admission 决定一轮观察可写入哪些 Item；返回空切片则 Observe 只读。
+// 实现必须并发安全。
 type Admission interface {
 	Admit(context.Context, ObserveRequest) ([]Item, error)
 }
 
-// AdmissionFunc adapts a function to Admission.
+// AdmissionFunc 将函数适配为 Admission。
 type AdmissionFunc func(context.Context, ObserveRequest) ([]Item, error)
 
 func (f AdmissionFunc) Admit(ctx context.Context, request ObserveRequest) ([]Item, error) {
 	return f(ctx, request.Clone())
 }
 
-// InMemoryOptions configures a bounded process-local reference Port.
+// InMemoryOptions 配置进程内、有界的参考实现 Port。
 type InMemoryOptions struct {
-	InitialItems   []Item
-	Admission      Admission
-	MemoryOptions  Options
-	MaxStoredItems int
-	MaxStoredBytes int
-	ConflictPolicy ConflictPolicy
-	Now            func() time.Time
+	InitialItems   []Item           // 启动时预置的 Items（会校验并拷贝）
+	Admission      Admission        // nil 表示 Observe 不写入
+	MemoryOptions  Options          // Port 穿越边界；零值由 NormalizeOptions 填充
+	MaxStoredItems int              // 存储条数硬上限；0 用默认值
+	MaxStoredBytes int              // 存储字节硬上限；0 用默认值
+	ConflictPolicy ConflictPolicy   // 空值默认为 ConflictReject
+	Now            func() time.Time // 可注入时钟；返回值会转成 UTC
 }
 
-// InMemory is a concurrency-safe, non-durable reference Port. Recall returns
-// the newest matching Items first. Observe stores only Items explicitly
-// returned by Admission. It never silently evicts Items; exact-ID conflicts
-// follow the configured ConflictPolicy.
+// InMemory 是并发安全、非持久的参考 Port。
+// Recall 优先返回最新匹配 Items；Observe 只存储 Admission 明确返回的 Items。
+// 不会静默淘汰 Items；精确 ID 冲突按 ConflictPolicy 处理。
 type InMemory struct {
 	mu sync.RWMutex
 
@@ -69,7 +68,7 @@ type InMemory struct {
 	textBytes int
 }
 
-// NewInMemory validates and copies all configuration and initial Items.
+// NewInMemory 校验并拷贝全部配置与初始 Items。
 func NewInMemory(options InMemoryOptions) (*InMemory, error) {
 	limits, err := NormalizeOptions(options.MemoryOptions)
 	if err != nil {
@@ -112,6 +111,7 @@ func NewInMemory(options InMemoryOptions) (*InMemory, error) {
 	return value, nil
 }
 
+// Recall 按 Scope 从新到旧取未过期 Items，受 Limit 与总字节上限约束。
 func (m *InMemory) Recall(ctx context.Context, request RecallRequest) (RecallResult, error) {
 	if ctx == nil || m == nil {
 		return RecallResult{}, &Error{Code: ErrorInvalidRequest, Cause: fmt.Errorf("context and in-memory Port are required")}
@@ -154,6 +154,7 @@ func (m *InMemory) Recall(ctx context.Context, request RecallRequest) (RecallRes
 	return RecallResult{Items: cloneItems(items)}, nil
 }
 
+// Observe 先经 Admission 决策，再在持锁下清理过期项并写入。
 func (m *InMemory) Observe(ctx context.Context, request ObserveRequest) error {
 	if ctx == nil || m == nil {
 		return &Error{Code: ErrorInvalidRequest, Cause: fmt.Errorf("context and in-memory Port are required")}
@@ -200,6 +201,7 @@ func (m *InMemory) Observe(ctx context.Context, request ObserveRequest) error {
 	return m.appendItems(items)
 }
 
+// validateItems 在写入前检查 Scope、溯源、过期与批次容量。
 func (m *InMemory) validateItems(items []Item, observation *ObserveRequest, now *time.Time) error {
 	if len(items) > m.maxItems {
 		return fmt.Errorf("memory item batch exceeds in-memory item capacity")
@@ -241,8 +243,8 @@ func (m *InMemory) validateItems(items []Item, observation *ObserveRequest, now 
 	return nil
 }
 
-// appendItems validates storage conflicts and capacity before changing state.
-// The caller holds m.mu after construction has completed.
+// appendItems 在改动状态前校验冲突与容量。
+// 调用方在构造完成后须持有 m.mu。
 func (m *InMemory) appendItems(items []Item) error {
 	pending := items
 	replacedIDs := make(map[Scope]map[string]struct{})
@@ -321,6 +323,7 @@ func (m *InMemory) removeItems(ids map[Scope]map[string]struct{}) {
 	}
 }
 
+// pruneExpired 删除已过期 Items，并在 Scope 变空时清理索引。
 func (m *InMemory) pruneExpired(now time.Time) {
 	for scope, stored := range m.items {
 		retained := stored[:0]
@@ -342,6 +345,7 @@ func (m *InMemory) pruneExpired(now time.Time) {
 	}
 }
 
+// validateObservedProvenance 要求溯源 RunID 与 MessageIDs 落在本轮观察内。
 func validateObservedProvenance(provenance Provenance, request ObserveRequest) error {
 	if provenance.RunID != request.RunID {
 		return fmt.Errorf("run id must match the observed run")
@@ -365,6 +369,7 @@ func expired(item Item, now time.Time) bool {
 	return item.Expired(now)
 }
 
+// callMemoryClock 隔离时钟回调 panic，并强制使用 UTC 非零时间。
 func callMemoryClock(clock func() time.Time) (value time.Time, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -378,6 +383,7 @@ func callMemoryClock(clock func() time.Time) (value time.Time, err error) {
 	return value, nil
 }
 
+// callAdmission 隔离 Admission panic，并对返回切片做浅拷贝防别名。
 func callAdmission(ctx context.Context, admission Admission, request ObserveRequest) (items []Item, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {

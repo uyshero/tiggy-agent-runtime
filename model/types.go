@@ -1,4 +1,4 @@
-// Package model defines provider-neutral model generation contracts.
+// Package model 定义供应商无关的模型生成契约。
 package model
 
 import (
@@ -8,20 +8,20 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/message"
 )
 
-// DeltaSink is called synchronously in stream order. Returning an error asks
-// the provider to stop generation and return that error to the caller.
+// DeltaSink 按流式顺序同步回调；返回错误即要求供应商停止生成并把错误交回调用方。
 type DeltaSink func(Delta) error
 
-// Model is the provider-neutral generation contract.
+// Model 是供应商无关的生成契约。
 type Model interface {
 	Generate(context.Context, Request, DeltaSink) (Response, error)
 }
 
-// TokenCounter is an optional capability used by context planning.
+// TokenCounter 是上下文规划使用的可选能力。
 type TokenCounter interface {
 	CountTokens(context.Context, TokenRequest) (int64, error)
 }
 
+// RequestPurpose 标明一次生成请求的用途。
 type RequestPurpose string
 
 const (
@@ -31,14 +31,14 @@ const (
 	PurposeEvaluation RequestPurpose = "evaluation"
 )
 
-// Identity captures the model binding used for one request. Credentials stay
-// inside the provider implementation and must not be carried in this value.
+// Identity 描述单次请求绑定的模型；凭据留在供应商实现内，不得放入本值。
 type Identity struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
 	Revision string `json:"revision,omitempty"`
 }
 
+// ToolConcurrencyClass 声明工具在批处理中的并发类别。
 type ToolConcurrencyClass string
 
 const (
@@ -46,6 +46,7 @@ const (
 	ToolConcurrencySafe       ToolConcurrencyClass = "safe"
 )
 
+// ToolDefinition 是暴露给模型的工具定义（含 Input Schema）。
 type ToolDefinition struct {
 	Name             string               `json:"name"`
 	Description      string               `json:"description,omitempty"`

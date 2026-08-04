@@ -15,15 +15,16 @@ const (
 	DefaultReadMaxRecordings = 10_000
 )
 
+// JSONLOptions 配置按行写入的边界。
 type JSONLOptions struct {
 	MaxLineBytes    int
 	MaxActiveRuns   int
 	MaxEventsPerRun int
 }
 
-// JSONLJournal appends one Entry per line. The caller owns the Writer, flush,
-// sync, close, file permissions, encryption, rotation, and retention policy.
-// A write error may leave a partial final line.
+// JSONLJournal 每行追加一条 Entry。
+// Writer 的 flush/sync/close、权限、加密、轮转与留存由调用方拥有；
+// 写失败可能留下不完整的最后一行。
 type JSONLJournal struct {
 	mu              sync.Mutex
 	writer          io.Writer

@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-const maxContentDepth = 4
+const maxContentDepth = 4 // Content/ToolResult 嵌套深度上限
 
+// Validate 校验消息角色、可见性与全部 Content 块。
 func (m Message) Validate() error {
 	if strings.TrimSpace(m.ID) == "" {
 		return fmt.Errorf("message id is required")

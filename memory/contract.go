@@ -1,4 +1,7 @@
-// Package memory defines scoped long-term recall and observation contracts.
+// Package memory 定义作用域内的长期回忆（Recall）与观察（Observe）契约。
+//
+// Core 通过 Port 取证并在一轮结束后投喂观察；实现方不得把企业租户等类型泄漏进公共 API。
+// 召回结果默认视为不可信，须经校验后再投影进模型上下文。
 package memory
 
 import (
@@ -13,26 +16,27 @@ import (
 )
 
 const (
-	DefaultRecallLimit         = 16
-	DefaultMaxItemBytes        = 8 << 10
-	DefaultMaxRecallBytes      = 64 << 10
-	DefaultMaxObservationBytes = 256 << 10
+	DefaultRecallLimit         = 16        // 单次召回条数默认上限
+	DefaultMaxItemBytes        = 8 << 10   // 单条 Item 文本默认上限（8 KiB）
+	DefaultMaxRecallBytes      = 64 << 10  // 单次召回总文本默认上限（64 KiB）
+	DefaultMaxObservationBytes = 256 << 10 // 单次观察序列化体积默认上限（256 KiB）
 )
 
-// FailureMode controls how an ordinary Port error affects the Agent Run.
+// FailureMode 控制 Port 普通错误如何影响 Agent Run。
 type FailureMode string
 
 const (
-	FailureModeDegrade FailureMode = "degrade"
-	FailureModeFailRun FailureMode = "fail_run"
+	FailureModeDegrade FailureMode = "degrade"  // 降级：跳过 Memory，继续 Run
+	FailureModeFailRun FailureMode = "fail_run" // 失败即终止 Run
 )
 
-// Scope is an application-defined isolation boundary without Enterprise types.
+// Scope 是应用定义的隔离边界，不含企业级租户类型。
 type Scope struct {
 	Namespace string `json:"namespace"`
 	Key       string `json:"key"`
 }
 
+// Validate 要求 Namespace/Key 为非空、已 trim、合法 UTF-8 的有界字符串。
 func (s Scope) Validate() error {
 	if !canonicalBounded(s.Namespace, 128) || !canonicalBounded(s.Key, 512) {
 		return fmt.Errorf("memory scope namespace and key are required canonical values")
@@ -40,13 +44,14 @@ func (s Scope) Validate() error {
 	return nil
 }
 
-// Provenance identifies the application-defined source class of a record.
+// Provenance 标识记录的应用侧来源类别，以及可选的 Run/消息溯源。
 type Provenance struct {
 	Source     string   `json:"source"`
 	RunID      string   `json:"run_id,omitempty"`
 	MessageIDs []string `json:"message_ids,omitempty"`
 }
 
+// Validate 校验来源与溯源字段的一致性（有 MessageIDs 时必须带 RunID）。
 func (p Provenance) Validate() error {
 	if !canonicalBounded(p.Source, 256) {
 		return fmt.Errorf("memory provenance source is required")
@@ -78,7 +83,7 @@ func (p Provenance) clone() Provenance {
 	return p
 }
 
-// Item is one scoped textual memory returned to model context.
+// Item 是返回给模型上下文的一条作用域内文本记忆。
 type Item struct {
 	ID         string     `json:"id"`
 	Scope      Scope      `json:"scope"`
@@ -87,6 +92,7 @@ type Item struct {
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }
 
+// Validate 校验 Item 字段；ExpiresAt 若存在必须是非零 UTC 时间。
 func (i Item) Validate() error {
 	if !canonicalBounded(i.ID, 512) {
 		return fmt.Errorf("memory item id is required")
@@ -106,7 +112,7 @@ func (i Item) Validate() error {
 	return nil
 }
 
-// Clone returns an Item without shared mutable provenance or expiry values.
+// Clone 返回不共享可变 Provenance / ExpiresAt 的 Item 副本。
 func (i Item) Clone() Item {
 	i.Provenance = i.Provenance.clone()
 	if i.ExpiresAt != nil {
@@ -116,8 +122,8 @@ func (i Item) Clone() Item {
 	return i
 }
 
-// Expired reports whether the Item is unavailable at the given instant.
-// Expiry is inclusive: an Item is expired when at >= ExpiresAt.
+// Expired 报告在给定时刻该 Item 是否已不可用。
+// 过期是包含边界：当 at >= ExpiresAt 时视为过期。
 func (i Item) Expired(at time.Time) bool {
 	return i.ExpiresAt != nil && !at.Before(*i.ExpiresAt)
 }
@@ -133,7 +139,7 @@ func cloneItems(items []Item) []Item {
 	return cloned
 }
 
-// RecallRequest asks for evidence relevant to the current User input.
+// RecallRequest 按当前 User 输入请求相关证据。
 type RecallRequest struct {
 	RunID string          `json:"run_id"`
 	Scope Scope           `json:"scope"`
@@ -141,11 +147,13 @@ type RecallRequest struct {
 	Limit int             `json:"limit"`
 }
 
+// Clone 深拷贝 Input，避免调用方与 Port 共享 Message 缓冲。
 func (r RecallRequest) Clone() RecallRequest {
 	r.Input = message.Clone(r.Input)
 	return r
 }
 
+// Validate 要求 Input 为 User 角色，且 Limit 为正。
 func (r RecallRequest) Validate() error {
 	if !canonicalBounded(r.RunID, 512) {
 		return fmt.Errorf("memory recall run id is required")
@@ -165,15 +173,17 @@ func (r RecallRequest) Validate() error {
 	return nil
 }
 
-// RecallResult contains untrusted Items that Core validates before projection.
+// RecallResult 包含不可信的 Items；Core 在投影前必须再校验。
 type RecallResult struct {
 	Items []Item `json:"items"`
 }
 
+// Clone 返回 Items 的深拷贝。
 func (r RecallResult) Clone() RecallResult {
 	return RecallResult{Items: cloneItems(r.Items)}
 }
 
+// Validate 按请求与 Options 校验条数、Scope、去重与字节上限。
 func (r RecallResult) Validate(request RecallRequest, options Options) error {
 	if err := request.Validate(); err != nil {
 		return err
@@ -205,18 +215,20 @@ func (r RecallResult) Validate(request RecallRequest, options Options) error {
 	return nil
 }
 
-// ObserveRequest contains only messages created in one completed Agent turn.
+// ObserveRequest 仅包含一轮已完成 Agent Turn 中产生的消息。
 type ObserveRequest struct {
 	RunID    string            `json:"run_id"`
 	Scope    Scope             `json:"scope"`
 	Messages []message.Message `json:"messages"`
 }
 
+// Clone 深拷贝 Messages。
 func (r ObserveRequest) Clone() ObserveRequest {
 	r.Messages = message.CloneAll(r.Messages)
 	return r
 }
 
+// Validate 要求至少两条非 System 消息，并限制序列化体积。
 func (r ObserveRequest) Validate(options Options) error {
 	if !canonicalBounded(r.RunID, 512) {
 		return fmt.Errorf("memory observe run id is required")
@@ -250,16 +262,15 @@ func (r ObserveRequest) Validate(options Options) error {
 	return nil
 }
 
-// Port retrieves scoped evidence and observes one completed Agent turn.
-// Implementations must be concurrency-safe when their Agent is reused
-// concurrently and must honor Context cancellation.
+// Port 按 Scope 取证，并观察一轮已完成的 Agent Turn。
+// Agent 被并发复用时，实现必须并发安全，并尊重 Context 取消。
 type Port interface {
 	Recall(context.Context, RecallRequest) (RecallResult, error)
 	Observe(context.Context, ObserveRequest) error
 }
 
-// Options bounds data crossing the Port and chooses ordinary-error behavior.
-// Zero fields are replaced by DefaultOptions through NormalizeOptions.
+// Options 限制穿越 Port 的数据量，并选择普通错误的处理策略。
+// 零值字段由 NormalizeOptions 填入 DefaultOptions。
 type Options struct {
 	RecallLimit         int         `json:"recall_limit"`
 	MaxItemBytes        int         `json:"max_item_bytes"`
@@ -269,7 +280,7 @@ type Options struct {
 	ObserveFailureMode  FailureMode `json:"observe_failure_mode"`
 }
 
-// DefaultOptions returns the standard bounded, degradable Memory policy.
+// DefaultOptions 返回标准的有界、默认可降级 Memory 策略。
 func DefaultOptions() Options {
 	return Options{
 		RecallLimit: DefaultRecallLimit, MaxItemBytes: DefaultMaxItemBytes,
@@ -278,7 +289,7 @@ func DefaultOptions() Options {
 	}
 }
 
-// NormalizeOptions fills zero fields and validates all configured boundaries.
+// NormalizeOptions 填充零值字段，并校验全部边界配置。
 func NormalizeOptions(options Options) (Options, error) {
 	defaults := DefaultOptions()
 	if options.RecallLimit == 0 {
@@ -308,6 +319,7 @@ func NormalizeOptions(options Options) (Options, error) {
 	return options, nil
 }
 
+// canonicalBounded 要求非空、无首尾空白、合法 UTF-8，且字节长度不超过 maximum。
 func canonicalBounded(value string, maximum int) bool {
 	return strings.TrimSpace(value) != "" && value == strings.TrimSpace(value) && utf8.ValidString(value) && len(value) <= maximum
 }

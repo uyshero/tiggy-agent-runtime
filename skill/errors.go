@@ -2,6 +2,7 @@ package skill
 
 import "fmt"
 
+// ErrorCode 对 Skill Catalog/激活失败做稳定分类。
 type ErrorCode string
 
 const (
@@ -15,6 +16,7 @@ const (
 	ErrorSourceFailed    ErrorCode = "source_failed"
 )
 
+// Error 保留操作、Skill 名、路径与底层 Cause。
 type Error struct {
 	Code      ErrorCode
 	Operation string

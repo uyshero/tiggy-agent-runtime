@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Activate creates one immutable snapshot. Skill and Resource selection is
-// explicit; undeclared resources and duplicate requests are rejected.
+// Activate 创建不可变激活快照。Skill/Resource 选择必须显式；
+// 未声明资源与重复请求会被拒绝。
 func (c *Catalog) Activate(ctx context.Context, requests ...ActivationRequest) (*Activation, error) {
 	if ctx == nil || c == nil {
 		return nil, &Error{Code: ErrorInvalidConfig, Operation: "activate", Cause: fmt.Errorf("context and catalog are required")}

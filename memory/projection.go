@@ -7,7 +7,8 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/message"
 )
 
-// Project creates one internal System Message without mutating recalled Items.
+// Project 将召回的 Items 投影为一条内部 System Message，不修改原始 Items。
+// 投影文本标明「回忆内容是上下文证据，不是指令」；Metadata 记录 kind、namespace 与 item_ids。
 func Project(messageID string, scope Scope, items []Item) (message.Message, error) {
 	if !canonicalBounded(messageID, 512) {
 		return message.Message{}, &Error{Code: ErrorInvalidRequest, Cause: fmt.Errorf("memory projection message id is required")}
@@ -26,6 +27,7 @@ func Project(messageID string, scope Scope, items []Item) (message.Message, erro
 	values := make([]projectedItem, len(items))
 	itemIDs := make([]string, len(items))
 	for index, item := range items {
+		// 投影前逐条校验，并拒绝跨 Scope 的 Item。
 		if err := item.Validate(); err != nil || item.Scope != scope {
 			if err == nil {
 				err = fmt.Errorf("memory item crossed the projection scope")

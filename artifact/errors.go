@@ -2,6 +2,7 @@ package artifact
 
 import "fmt"
 
+// ErrorCode 对 Artifact 卸载/存储失败做稳定分类。
 type ErrorCode string
 
 const (
@@ -13,6 +14,7 @@ const (
 	ErrorInvalidDecision ErrorCode = "invalid_decision"
 )
 
+// Error 保留稳定 Code 与底层 Cause。
 type Error struct {
 	Code  ErrorCode
 	Cause error

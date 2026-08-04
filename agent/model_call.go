@@ -12,6 +12,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
+// modelGeneration 是一次（可能含重试/降级）模型生成的编排结果。
 type modelGeneration struct {
 	response  model.Response
 	callID    string
@@ -23,6 +24,7 @@ type modelGeneration struct {
 	canceled  bool
 }
 
+// generateModel 按主模型与 Fallbacks 调用供应商，并应用 FailurePolicy 的重试/降级决策。
 func (a *Agent) generateModel(
 	ctx context.Context,
 	runID string,

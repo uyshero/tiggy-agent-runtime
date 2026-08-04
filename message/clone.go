@@ -2,6 +2,7 @@ package message
 
 import "encoding/json"
 
+// Clone 深拷贝单条 Message（含 Content 与 Metadata 缓冲）。
 func Clone(value Message) Message {
 	cloned := value
 	cloned.Content = CloneContent(value.Content)
@@ -9,6 +10,7 @@ func Clone(value Message) Message {
 	return cloned
 }
 
+// CloneAll 深拷贝消息切片；nil 输入返回 nil。
 func CloneAll(values []Message) []Message {
 	if values == nil {
 		return nil
@@ -20,6 +22,7 @@ func CloneAll(values []Message) []Message {
 	return cloned
 }
 
+// CloneContent 深拷贝内容块及其嵌套指针/RawMessage，避免共享可变缓冲。
 func CloneContent(values []Content) []Content {
 	if values == nil {
 		return nil

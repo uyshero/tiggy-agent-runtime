@@ -1,4 +1,4 @@
-// Package contextmanager plans bounded model context before generation.
+// Package contextmanager 在生成前规划有界模型上下文。
 package contextmanager
 
 import (
@@ -16,6 +16,7 @@ const (
 	maxTokenValue                    = int64(1 << 40)
 )
 
+// CountSource 标明 Token 计数来自供应商还是估算。
 type CountSource string
 
 const (
@@ -23,6 +24,7 @@ const (
 	CountSourceEstimated CountSource = "estimated"
 )
 
+// Pressure 描述相对上下文窗口的压力等级。
 type Pressure string
 
 const (
@@ -32,6 +34,7 @@ const (
 	PressureOverflow Pressure = "overflow"
 )
 
+// Request 是一次上下文规划输入。
 type Request struct {
 	Model               model.Identity
 	Messages            []message.Message

@@ -17,6 +17,7 @@ message
 model
 event
 permission
+approval
 command
 Agent State 和 Runtime Contract
 ```
@@ -32,6 +33,8 @@ Agent、Toolkit、内置 Tool、Context、Artifact、Memory 和 Observe 可以�
 Model Provider、MCP、OpenTelemetry、Vector Store、Remote FileSystem 和隔离型 Command Runner Adapter 可以依赖官方或成熟 Client，但 Adapter 依赖不能渗透到基础协议包。`mcp` 的私有 Transport Adapter 引入官方 SDK，但公开 API 仍只暴露 Tiggy 和 Go 标准库类型。
 
 `command/local` 是仅使用标准库的本地进程 Adapter，只依赖 `command`、`safespace` 和 `os/exec`，不增加 Go Module 依赖。应用必须显式 Import 它；`builtin.bash` 不会传递引入本地执行能力。
+
+`approval` 只使用 JSON 校验、SHA-256、标准库 Value Copy 和 Panic Containment，不包含 Identity Provider、数据库、通知 Client、Scheduler 或 UI 依赖。
 
 `skill` 使用标准库严格 JSON 解析和仅依赖标准库的 `safespace.Reader` 契约。Skill 发现与激活不增加 Go Module、YAML Parser、Package Manager 或 Node.js 依赖。详见 [ADR 0005](./adr/0005-strict-skill-manifest.md)。
 
@@ -92,4 +95,12 @@ Model Provider、MCP、OpenTelemetry、Vector Store、Remote FileSystem 和隔�
 - Public Release 不依赖任何相邻仓库；
 - 本地联调使用开发者 `go.work`，Release `go.mod` 不提交相对路径 `replace`。
 
-首次公开发布前，CI 必须增加漏洞和 License 检查。漏洞豁免必须记录评估、Owner、到期时间和补偿措施。
+## License 合规
+
+[`licenses/go-modules.txt`](../licenses/go-modules.txt) 审核 `go list -m all` 选中的完整非主模块列表，包括间接依赖和仅测试使用的模块。每一项把精确 Module Version 与 SPDX License Expression 绑定。`make licenses` 将当前 Build List 与清单比较，普通 CI 通过 `make verify` 强制执行；新增 Module 或版本升级在完成源码与许可证审核前会默认失败。
+
+当前允许基线包含 Apache-2.0、MIT、BSD-2-Clause、BSD-3-Clause 和 ISC。两个分发包使用经过单独审核的混合表达式：MCP SDK 同时包含 Apache-2.0 代码、遗留 MIT 代码和 CC-BY-4.0 文档；`gopkg.in/yaml.v3` 同时包含 MIT 衍生文件和 Apache-2.0 文件。分发时必须保留上游要求的 Notice 和 Attribution。
+
+GPL、AGPL、LGPL、SSPL、未知、自定义以及其他未经审核的许可证默认禁止。增加新的 License 或混合表达式必须经过 Legal/Owner 审核、记录兼容性决定，并有意更新 Policy 与 Manifest。该脚本是确定性的准入门禁，不能替代法律审查或源码级 License Scanner。
+
+普通 CI 通过 `make verify` 运行依赖许可证门禁，通过固定版本的 `make vuln` 运行漏洞扫描。漏洞豁免必须记录评估、Owner、到期时间和补偿措施。

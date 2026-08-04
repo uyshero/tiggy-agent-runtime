@@ -19,17 +19,17 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
 
-// GrepToolName is the stable model-visible name of GrepTool.
+// GrepToolName 是 GrepTool 对模型可见的稳定名称。
 const GrepToolName = "builtin.grep"
 
-// GrepOptions configures a GrepTool. A nil Permission denies every call.
+// GrepOptions 配置 GrepTool；Permission 为 nil 时拒绝所有调用。
 type GrepOptions struct {
 	FileSystem safespace.FileSystem
 	Permission permission.Policy
 	Limits     SearchLimits
 }
 
-// GrepTool returns bounded line-oriented regular-expression matches.
+// GrepTool 返回有界的按行正则匹配结果。
 type GrepTool struct {
 	fileSystem safespace.FileSystem
 	permission permission.Policy

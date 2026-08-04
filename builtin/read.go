@@ -14,20 +14,20 @@ import (
 )
 
 const (
-	// ReadToolName is the stable model-visible name of ReadTool.
+	// ReadToolName 是 ReadTool 对模型可见的稳定名称。
 	ReadToolName = "builtin.read"
-	// DefaultMaxReadBytes bounds file content returned to the model by default.
+	// DefaultMaxReadBytes 默认限制返回给模型的文件内容大小（128 KiB）。
 	DefaultMaxReadBytes int64 = 128 << 10
 )
 
-// ReadOptions configures a ReadTool. A nil Permission denies every call.
+// ReadOptions 配置 ReadTool；Permission 为 nil 时拒绝所有调用。
 type ReadOptions struct {
 	FileSystem safespace.FileSystem
 	Permission permission.Policy
 	MaxBytes   int64
 }
 
-// ReadTool returns bounded UTF-8 file content from a FileSystem.
+// ReadTool 从 FileSystem 读取有界 UTF-8 文本文件。
 type ReadTool struct {
 	fileSystem safespace.FileSystem
 	permission permission.Policy
@@ -36,7 +36,7 @@ type ReadTool struct {
 
 var _ tool.Tool = (*ReadTool)(nil)
 
-// NewRead constructs a bounded text-file reader.
+// NewRead 构造有界文本文件读取工具。
 func NewRead(options ReadOptions) (*ReadTool, error) {
 	if options.FileSystem == nil {
 		return nil, fmt.Errorf("read tool filesystem is required")

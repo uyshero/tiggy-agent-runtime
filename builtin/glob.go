@@ -15,17 +15,17 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
 
-// GlobToolName is the stable model-visible name of GlobTool.
+// GlobToolName 是 GlobTool 对模型可见的稳定名称。
 const GlobToolName = "builtin.glob"
 
-// GlobOptions configures a GlobTool. A nil Permission denies every call.
+// GlobOptions 配置 GlobTool；Permission 为 nil 时拒绝所有调用。
 type GlobOptions struct {
 	FileSystem safespace.FileSystem
 	Permission permission.Policy
 	Limits     SearchLimits
 }
 
-// GlobTool returns bounded paths matching a doublestar pattern.
+// GlobTool 返回匹配 doublestar 模式的有界路径列表。
 type GlobTool struct {
 	fileSystem safespace.FileSystem
 	permission permission.Policy
@@ -34,7 +34,7 @@ type GlobTool struct {
 
 var _ tool.Tool = (*GlobTool)(nil)
 
-// NewGlob constructs a bounded recursive path matcher.
+// NewGlob 构造有界递归路径匹配工具。
 func NewGlob(options GlobOptions) (*GlobTool, error) {
 	if options.FileSystem == nil {
 		return nil, fmt.Errorf("glob tool filesystem is required")

@@ -18,16 +18,19 @@ import (
 
 var temporaryCounter atomic.Uint64
 
+// Limits 限制单次读/写字节与目录列举条数。
 type Limits struct {
 	MaxReadBytes   int64
 	MaxWriteBytes  int64
 	MaxListEntries int
 }
 
+// DefaultLimits 返回 4 MiB 读写与 1 万条列举的默认边界。
 func DefaultLimits() Limits {
 	return Limits{MaxReadBytes: 4 << 20, MaxWriteBytes: 4 << 20, MaxListEntries: 10_000}
 }
 
+// SafeSpace 基于 os.Root 将全部路径约束在单一本地根目录下。
 type SafeSpace struct {
 	root      *os.Root
 	rootPath  string
@@ -38,6 +41,7 @@ type SafeSpace struct {
 
 var _ FileSystem = (*SafeSpace)(nil)
 
+// OpenSafeSpace 打开根目录并应用 Limits；零值 Limits 使用默认值。
 func OpenSafeSpace(rootPath string, limits Limits) (*SafeSpace, error) {
 	rootPath = strings.TrimSpace(rootPath)
 	if rootPath == "" {

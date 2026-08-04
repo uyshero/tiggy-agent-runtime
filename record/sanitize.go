@@ -9,8 +9,8 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
-// SanitizedEvent permits only Payload replacement. Recorder verifies that the
-// protocol envelope remains identical to the source Event.
+// SanitizedEvent 只允许替换 Payload。
+// Recorder 会校验协议信封与源 Event 保持一致。
 type SanitizedEvent struct {
 	Event           event.Event
 	PayloadRedacted bool
@@ -32,22 +32,21 @@ func (s SanitizedEvent) Validate(source event.Event) error {
 	return nil
 }
 
-// Sanitizer removes or transforms payload data before journal persistence.
-// Implementations must be concurrency-safe and must not modify Event envelope
-// fields. SafeSanitizer is used by default.
+// Sanitizer 在账本持久化前移除或转换 payload。
+// 实现必须并发安全，且不得修改 Event 信封字段；默认使用 SafeSanitizer。
 type Sanitizer interface {
 	Sanitize(event.Event) (SanitizedEvent, error)
 }
 
+// SanitizerFunc 将函数适配为 Sanitizer。
 type SanitizerFunc func(event.Event) (SanitizedEvent, error)
 
 func (f SanitizerFunc) Sanitize(value event.Event) (SanitizedEvent, error) {
 	return f(cloneEvent(value))
 }
 
-// SafeSanitizer preserves reviewed lifecycle metadata, removes Model Delta
-// text, reasoning, Tool fragments, and provider errors, and drops payloads for
-// unknown Event types until their privacy contract is reviewed.
+// SafeSanitizer 保留已审阅的生命周期元数据，移除 Model Delta 文本/推理/Tool 片段与供应商错误，
+// 并对未知 Event 类型丢弃 payload，直至其隐私契约被审阅。
 type SafeSanitizer struct{}
 
 func (SafeSanitizer) Sanitize(value event.Event) (SanitizedEvent, error) {
@@ -93,7 +92,8 @@ func (FullSanitizer) Sanitize(value event.Event) (SanitizedEvent, error) {
 
 func knownSafeEventType(value event.Type) bool {
 	switch value {
-	case event.RunStarted, event.RunCompleted, event.RunFailed, event.RunCanceled,
+	case event.RunStarted, event.RunCompleted, event.RunFailed, event.RunCanceled, event.RunSuspended,
+		event.ApprovalRequired, event.ApprovalResolved,
 		event.ModelCallStarted, event.ModelCallCompleted,
 		event.ToolCallStarted, event.ToolCallCompleted,
 		event.ToolResultOffloadStarted, event.ToolResultOffloadCompleted, event.ToolResultOffloadFailed,

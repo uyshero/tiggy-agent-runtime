@@ -18,18 +18,18 @@ import (
 )
 
 const (
-	// BashToolName is the stable model-visible name of BashTool.
+	// BashToolName 是 BashTool 对模型可见的稳定名称。
 	BashToolName = "builtin.bash"
-	// DefaultMaxBashScriptBytes bounds model-provided shell source.
+	// DefaultMaxBashScriptBytes 限制模型提供的脚本源码大小（默认 32 KiB）。
 	DefaultMaxBashScriptBytes int64 = 32 << 10
-	// DefaultMaxBashOutputBytes bounds combined stdout and stderr.
+	// DefaultMaxBashOutputBytes 限制合并后的 stdout/stderr 大小（默认 128 KiB）。
 	DefaultMaxBashOutputBytes int64 = 128 << 10
 )
 
-// DefaultBashTimeout bounds each command independently of the Agent deadline.
+// DefaultBashTimeout 限制单次命令时长，独立于 Agent 截止时间。
 const DefaultBashTimeout = 30 * time.Second
 
-// BashOptions configures a BashTool. A nil Permission denies every call.
+// BashOptions 配置 BashTool；Permission 为 nil 时拒绝所有调用。
 type BashOptions struct {
 	Runner         command.Runner
 	Permission     permission.Policy
@@ -38,7 +38,7 @@ type BashOptions struct {
 	MaxOutputBytes int64
 }
 
-// BashTool executes one bounded shell script through an injected Runner.
+// BashTool 通过注入的 Runner 执行一段有界 shell 脚本。
 type BashTool struct {
 	runner         command.Runner
 	permission     permission.Policy
@@ -49,7 +49,7 @@ type BashTool struct {
 
 var _ tool.Tool = (*BashTool)(nil)
 
-// NewBash constructs a permission-aware bounded shell Tool.
+// NewBash 构造带权限检查的有界 shell 工具。
 func NewBash(options BashOptions) (*BashTool, error) {
 	if options.Runner == nil {
 		return nil, fmt.Errorf("bash tool command runner is required")

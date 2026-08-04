@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/uyshero/tiggy-agent-runtime/approval"
 	"github.com/uyshero/tiggy-agent-runtime/event"
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
@@ -199,11 +200,22 @@ func ValidateTrace(events []event.Event) error {
 			if err != nil || payload.FailedCallID == "" || completed.callID != payload.FailedCallID || completed.status != "failed" || payload.From != completed.model || payload.FallbackIndex <= 0 {
 				return fmt.Errorf("fallback event %q has no matching failed model call", value.ID)
 			}
+		case event.ApprovalRequired, event.ApprovalResolved:
+			payload, err := DecodePayload[event.ApprovalPayload](value)
+			validStatus := payload.Status == "pending"
+			if value.Type == event.ApprovalResolved {
+				validStatus = payload.Status == "approved" || payload.Status == "rejected"
+			}
+			if err != nil || payload.ApprovalID == "" || payload.SuspensionID == "" || payload.CallID == "" || payload.Tool == "" ||
+				!approval.ValidDigest(payload.ArgumentsDigest) || !approval.ValidDigest(payload.ToolDigest) || !validStatus {
+				return fmt.Errorf("approval event %q has invalid payload", value.ID)
+			}
 		}
 		if value.Terminal() {
 			terminals++
 			payload, err := DecodePayload[event.RunTerminalPayload](value)
-			if err != nil || !terminalMatchesStatus(value.Type, payload.Status) {
+			if err != nil || !terminalMatchesStatus(value.Type, payload.Status) ||
+				(value.Type == event.RunSuspended && payload.SuspensionID == "") {
 				return fmt.Errorf("terminal event %q has inconsistent status", value.ID)
 			}
 			if index != len(events)-1 {
@@ -301,6 +313,8 @@ func terminalMatchesStatus(eventType event.Type, status string) bool {
 		return status == "failed"
 	case event.RunCanceled:
 		return status == "canceled"
+	case event.RunSuspended:
+		return status == "suspended"
 	default:
 		return false
 	}

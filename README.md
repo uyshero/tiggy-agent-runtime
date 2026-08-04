@@ -14,7 +14,7 @@ The generated clients that call Tiggy Manage Agent over HTTP/SSE remain separate
 
 ## Status
 
-P3 implementation is complete. The repository now provides provider-neutral contracts, a bounded sequential ReAct loop, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic Context/Memory fault injection. The current version is not yet production-ready.
+P3 implementation is complete. The repository now provides provider-neutral contracts, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic Context/Memory fault injection. The current version is not yet production-ready.
 
 ## Module
 
@@ -34,6 +34,7 @@ agent/    Bounded Agent loop, State, structured RunError and events
 agenttest/ Deterministic models, tools, clocks, IDs, fault injection, and trace validation
 safespace/ Root-confined bounded local file operations and deterministic listing
 permission/ Process-local Tool effect decisions and action allowlists
+approval/ Whole-batch Tool approval decisions and serializable continuations
 builtin/  Bounded permission-aware tools supplied by the runtime
 command/  Bounded command contract and the opt-in local process adapter
 mcp/      Bounded MCP Tool discovery, calls, lifecycle, stdio, and HTTP
@@ -63,7 +64,7 @@ Requires Go 1.25.12 or later:
 make verify
 ```
 
-Verification includes formatting, dependency-boundary checks, `go vet`, unit tests, and race detection.
+Verification includes formatting, dependency-boundary and license checks, `go vet`, unit tests, and race detection.
 
 Release metadata is audited separately because it includes owner-controlled decisions that must not block normal development:
 
@@ -76,6 +77,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 
 ## Design Documents
 
+- [Getting started](./docs/getting-started.md)
 - [Architecture and boundaries](./docs/architecture.md)
 - [Dependency policy](./docs/dependencies.md)
 - [Engineering standards](./docs/standards.md)
@@ -83,6 +85,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [Toolkit semantics](./docs/toolkit.md)
 - [SafeSpace semantics](./docs/safespace.md)
 - [Permission Policy semantics](./docs/permission.md)
+- [Tool approval and resume semantics](./docs/approval.md)
 - [Command Runner semantics](./docs/command.md)
 - [MCP Client semantics](./docs/mcp.md)
 - [Skill semantics](./docs/skill.md)
@@ -92,6 +95,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [Observation semantics](./docs/observe.md)
 - [Run Recorder semantics](./docs/record.md)
 - [Context and Memory fault injection](./docs/fault-injection.md)
+- [Agent test kit guide](./docs/agenttest.md)
 - [Built-in Tool semantics](./docs/builtin.md)
 - [Extraction and migration plan](./docs/migration.md)
 - [Roadmap](./docs/roadmap.md)
@@ -116,4 +120,4 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 
 `tiggy-manage-agent` is the Enterprise service and may depend on this module. This module must never depend on the Enterprise repository, its database schema, Worker runtime, OpenAPI service contract, or tenant model.
 
-No license has been selected for independent public distribution yet. Do not publish the module publicly until repository ownership and licensing have been approved.
+The project is licensed under Apache-2.0. Publication remains an explicit owner-controlled release action; a prepared version section is not itself a published release.

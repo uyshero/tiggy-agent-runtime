@@ -2,45 +2,45 @@
 
 ## Purpose
 
-This document separates technical verification from authorization to publish. The Runtime is still pre-release and is not claimed to be production-ready. A passing command proves only the checks named here; it does not approve ownership, licensing, security response capacity, or public distribution.
+This document separates technical verification from authorization to publish. The Runtime is still pre-release and is not claimed to be production-ready. A passing command proves only the checks named here; it does not approve repository ownership, operational security-response capacity, or public distribution.
 
 ## Current Technical Baseline
 
 The following gates are implemented:
 
-- `make verify` checks formatting, Core/Enterprise dependency boundaries, `go vet`, unit tests, and race detection;
+- `make verify` checks formatting, Core/Enterprise dependency boundaries, the reviewed dependency-license manifest, `go vet`, unit tests, and race detection;
 - normal CI runs `make verify` and the pinned `make vuln` vulnerability scan;
 - tests use deterministic local doubles and require no database, real model, or network;
 - `make mcp-compat` is scheduled and opt-in because it downloads pinned Node.js reference servers;
 - the module has no neighboring-repository `replace` directive and Core has no Enterprise or database dependency;
-- public protocol changes are accumulated in `CHANGELOG.md` under `Unreleased`.
+- public protocol changes are recorded in dated release sections or accumulated under `Unreleased` after a release baseline.
 
 These results are an engineering baseline, not a production-readiness claim. Deployment-specific provider adapters, persistent Memory/Artifact adapters, credentials, isolation, retention, SLOs, and incident operations belong to the embedding application or Enterprise service.
 
 ## Current Blockers
 
-The repository must not be published yet. At the time this baseline was written:
+The `v0.1.0` candidate must not be published yet. Remaining blockers are:
 
-- the repository has no initial commit or reviewable history;
-- no project license has been approved and no `LICENSE` file exists;
-- repository ownership and public publication have not been approved;
-- `SECURITY.md` has no supported-version table or monitored contact;
-- the changelog has no dated release section and no version/tag baseline exists;
-- license-compliance policy and CI cannot be finalized before the project license and compatible-license policy are approved;
-- availability and ownership of the public module path `github.com/uyshero/tiggy-agent-runtime` have not been confirmed.
+- the candidate changes are not a reviewed, clean release commit and no `v0.1.0` tag exists;
+- availability and ownership of the public module path `github.com/uyshero/tiggy-agent-runtime` still require owner confirmation;
+- delivery and monitoring of `security@tiggy.cloud` must be operationally confirmed;
+- an authorized owner has not yet approved the actual publication action.
 
-Do not resolve these items by inventing names, contacts, dates, approvals, or license terms.
+Apache-2.0, the private security-reporting address, and the `v0.1.0` candidate date are now recorded. Do not resolve remaining items by inventing ownership, operational validation, or publication approval.
 
 ## Owner Decisions
 
-Before the first release, the repository owner must decide and record:
+Recorded decisions:
 
-1. the legal owner and approved project license;
-2. whether the GitHub organization and module path are final and publicly available;
-3. the monitored private vulnerability-reporting channel and supported-version policy;
-4. the first semantic version and release date;
-5. the compatible and prohibited dependency-license policy;
-6. who may approve, tag, publish, revoke, and respond to security reports.
+- project license: Apache-2.0;
+- first candidate: `v0.1.0`, dated 2026-08-04;
+- security policy: latest `0.1.x`, private reports to `security@tiggy.cloud`.
+
+Before publication, the repository owner must still record:
+
+1. the legal owner and whether the GitHub organization/module path are final and publicly available;
+2. who may approve, tag, publish, revoke, and respond to security reports;
+3. explicit authorization for the publication action.
 
 ## Automated Audit
 
@@ -63,12 +63,12 @@ The expected changelog heading is `## [0.1.0] - YYYY-MM-DD`. The command does no
 ## First-Release Checklist
 
 - [ ] owner and repository ownership are recorded;
-- [ ] project license is approved and `LICENSE` is added;
-- [ ] dependency licenses are reviewed and an allow/deny policy is enforced in CI;
+- [x] Apache-2.0 is approved and `LICENSE` is added;
+- [x] dependency licenses are reviewed and an allow/deny policy is enforced in CI;
 - [ ] public module path ownership and repository availability are confirmed;
-- [ ] `SECURITY.md` contains `## Supported Versions`, `## Reporting a Vulnerability`, and a `Security contact: mailto:...` or HTTPS contact line;
+- [x] `SECURITY.md` contains the required supported-version, reporting, and contact contract;
 - [ ] initial history is reviewed and the candidate worktree is clean;
-- [ ] relevant `Unreleased` changes are moved into a dated semantic-version section;
+- [x] candidate changes are recorded under `## [0.1.0] - 2026-08-04`;
 - [ ] `make release-verify RELEASE_VERSION=vX.Y.Z` passes at the tagged commit;
 - [ ] scheduled MCP compatibility is green for the pinned reference-server versions;
 - [ ] release notes state pre-v1 compatibility, supported Go version, known limitations, and rollback or revocation ownership;

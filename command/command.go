@@ -1,4 +1,4 @@
-// Package command defines bounded shell-command execution contracts.
+// Package command 定义有界 shell 命令执行契约。
 package command
 
 import (
@@ -8,14 +8,13 @@ import (
 	"strings"
 )
 
-// Request is a shell script and its canonical Root-relative working directory.
+// Request 是一段 shell 脚本及其相对 Root 的规范工作目录。
 type Request struct {
 	Script    string
 	Directory string
 }
 
-// Validate checks the portable request contract. Resource limits belong to
-// the Runner implementation and the calling Tool.
+// Validate 检查可移植请求契约；资源上限属于 Runner 实现与调用方 Tool。
 func (r Request) Validate() error {
 	if r.Script == "" {
 		return fmt.Errorf("command script is required")

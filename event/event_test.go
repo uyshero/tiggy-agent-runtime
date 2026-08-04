@@ -10,7 +10,7 @@ import (
 func TestTerminalEvents(t *testing.T) {
 	t.Parallel()
 
-	for _, eventType := range []event.Type{event.RunCompleted, event.RunFailed, event.RunCanceled} {
+	for _, eventType := range []event.Type{event.RunCompleted, event.RunFailed, event.RunCanceled, event.RunSuspended} {
 		value := event.Event{
 			ProtocolVersion: "tiggy.event.v1",
 			ID:              "evt_1",

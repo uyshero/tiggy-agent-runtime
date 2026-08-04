@@ -2,6 +2,7 @@ package contextmanager
 
 import "fmt"
 
+// ErrorCode 对上下文规划/压缩失败做稳定分类。
 type ErrorCode string
 
 const (
@@ -14,6 +15,7 @@ const (
 	ErrorInvalidCompression ErrorCode = "invalid_compression"
 )
 
+// Error 保留稳定 Code 与底层 Cause。
 type Error struct {
 	Code  ErrorCode
 	Cause error

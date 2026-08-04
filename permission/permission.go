@@ -1,4 +1,6 @@
-// Package permission defines process-local authorization decisions for tools.
+// Package permission 定义工具的进程内授权决策。
+//
+// Policy 只看到 Tool/Action/Target 元数据，不得携带凭据或完整命令参数。
 package permission
 
 import (
@@ -10,7 +12,7 @@ import (
 	"strings"
 )
 
-// Action is the kind of effect a tool is requesting.
+// Action 表示工具请求的效果类别。
 type Action string
 
 const (
@@ -21,7 +23,7 @@ const (
 	ActionExecute Action = "execute"
 )
 
-// Validate rejects actions outside the fixed Core vocabulary.
+// Validate 拒绝不在 Core 固定词表中的 Action。
 func (a Action) Validate() error {
 	switch a {
 	case ActionRead, ActionWrite, ActionEdit, ActionSearch, ActionExecute:
@@ -31,9 +33,8 @@ func (a Action) Validate() error {
 	}
 }
 
-// Request contains only the metadata needed for a permission decision. Target
-// identifies a path or working directory; it must not contain credentials or
-// full command arguments. An empty Target requests tool-level authorization.
+// Request 仅含授权决策所需元数据。
+// Target 标识路径或工作目录，不得含凭据或完整命令参数；空 Target 表示工具级授权。
 type Request struct {
 	Tool   string
 	Action Action
@@ -59,7 +60,7 @@ func (r Request) Validate() error {
 	return nil
 }
 
-// Decision is the complete result of one policy evaluation.
+// Decision 是一次策略评估的完整结果。
 type Decision string
 
 const (
@@ -67,7 +68,7 @@ const (
 	DecisionDeny  Decision = "deny"
 )
 
-// Validate rejects decisions other than allow or deny.
+// Validate 只允许 allow / deny。
 func (d Decision) Validate() error {
 	switch d {
 	case DecisionAllow, DecisionDeny:
@@ -77,13 +78,12 @@ func (d Decision) Validate() error {
 	}
 }
 
-// Policy makes one bounded authorization decision. Implementations must be
-// safe for concurrent use when shared by concurrent tools.
+// Policy 做出一次有界授权决策；被并发工具共享时必须并发安全。
 type Policy interface {
 	Decide(context.Context, Request) (Decision, error)
 }
 
-// PolicyFunc adapts a function to Policy.
+// PolicyFunc 将函数适配为 Policy。
 type PolicyFunc func(context.Context, Request) (Decision, error)
 
 func (f PolicyFunc) Decide(ctx context.Context, request Request) (Decision, error) {
@@ -93,7 +93,7 @@ func (f PolicyFunc) Decide(ctx context.Context, request Request) (Decision, erro
 	return f(ctx, request)
 }
 
-// AllowAll permits every valid request. Applications must opt in explicitly.
+// AllowAll 放行所有合法请求；应用必须显式选择启用。
 type AllowAll struct{}
 
 func (AllowAll) Decide(context.Context, Request) (Decision, error) {

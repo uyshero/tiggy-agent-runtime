@@ -25,7 +25,7 @@ MCP requires protocol negotiation, JSON-RPC correlation, cancellation, paginatio
 - Standard-library alternative: insufficient without implementing MCP negotiation, JSON-RPC, SSE, cancellation, and compatibility behavior locally.
 - Version: `v1.7.0`, released 2026-07-27; requires Go 1.25.0, compatible with the Runtime baseline of Go 1.25.12.
 - Ownership: official Model Context Protocol Go SDK under the `modelcontextprotocol` organization.
-- License: the SDK is transitioning from MIT to Apache-2.0 and its repository LICENSE includes both grants plus CC-BY-4.0 for documentation. Public Runtime distribution remains blocked on the project's own license review, which must also confirm this mixed transition.
+- License: the SDK is transitioning from MIT to Apache-2.0 and its repository LICENSE includes both grants plus CC-BY-4.0 for documentation. The Runtime is Apache-2.0 licensed; release review must continue to preserve the SDK's applicable notices and documentation attribution.
 - Added transitive modules: `google/jsonschema-go`, `segmentio/encoding`, `segmentio/asm`, `yosida95/uritemplate`, `x/oauth2`, `x/sync`, `x/sys`, and `x/time`.
 - CGO: none in the linked MCP dependency graph.
 - Goroutines/resources: sessions own JSON-RPC read loops; Streamable HTTP may own an SSE reconnect loop; stdio owns a subprocess and wait goroutine. `mcp.Client.Close` is the required shutdown boundary.

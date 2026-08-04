@@ -16,6 +16,7 @@ Extraction is semantic, not a directory copy. Enterprise-only types and guarante
 | `internal/model` model stream | `model` | replace Session/Turn/Attempt with Run/Call identity |
 | `internal/model` provider errors | `model` | retain safe detail and error chaining |
 | Agent lifecycle event vocabulary | `event` | use versioned envelope and correlation fields |
+| Tool approval pause/resume protocol | `approval`, `agent` | remove Session/database ownership while retaining exact-call continuation invariants |
 
 ### Extract after interface redesign
 
@@ -33,7 +34,7 @@ Extraction is semantic, not a directory copy. Enterprise-only types and guarante
 
 | Existing area | Reason |
 |---|---|
-| `internal/agentcore` durable State/Phase | contains revision, Session, Turn, approval, completion, and durability semantics |
+| `internal/agentcore` durable State/Phase | contains revision, Session, Turn, durable coordination, completion, and database recovery semantics |
 | `DurabilityPort` and PostgreSQL implementation | database-level execution guarantee |
 | Worker queue, lease, attempt and fencing | distributed scheduling concern |
 | approval/intervention records | enterprise workflow and audit concern |
@@ -64,6 +65,7 @@ Extraction is semantic, not a directory copy. Enterprise-only types and guarante
 - MCP lifecycle and compatibility suite;
 - Skills and typed extension contracts;
 - permission and tool scheduling policies.
+- process-local Tool approval suspension and exact-call resume.
 
 ### Stage 3: context, memory, and observation
 
@@ -80,6 +82,24 @@ Extraction is semantic, not a directory copy. Enterprise-only types and guarante
 - migration uses a feature flag and explicit rollback window;
 - old duplicate code is removed only after production verification.
 
+### Enterprise durability constraint
+
+`Run` and `Resume` are process-local invocations. Persisting only their input
+and output State does not create a database checkpoint before and after every
+model call or Tool side effect. An Enterprise runtime that already guarantees
+revision fencing, Worker leases, Tool journals, and indeterminate-effect
+reconciliation must retain those guarantees through an adapter or a future
+database-neutral transition Port. It must not replace them with invocation-level
+snapshots and call that durable execution.
+
+Approval adoption should reuse the Enterprise intervention, identity, audit,
+notification, and scheduling system. `Suspension` remains the embedded Runtime
+continuation inside that system; it is not a second Enterprise approval record.
+
+Before an Enterprise execution path switches, crash tests must cover at least
+the model-call boundary, Tool started/result boundaries, approval persistence,
+lease loss, revision conflict, and resumption with an incompatible Toolkit.
+
 ## Local Development During Migration
 
 Use a developer-owned `go.work` outside release commits:
@@ -89,6 +109,10 @@ go work init ./tiggy-agent-runtime ./tiggy-manage-agent
 ```
 
 Do not commit a permanent relative `replace` directive to either released module. CI must verify each repository independently before cross-repository integration tests run.
+
+Enterprise release modules must require a tagged Semantic Version. Pseudo
+versions, branch dependencies, and untagged commits are not accepted for the
+production migration path.
 
 ## Exit Criteria
 

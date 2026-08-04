@@ -32,6 +32,7 @@
 - [x] Sequential and concurrency-safe batches
 - [x] SafeSpace
 - [x] Basic permission policy
+- [x] Tool approval suspension and exact-call resume
 - [x] Read and Write tools
 - [x] Edit, Glob, and Grep tools
 - [x] Bash tool and CommandRunner boundary
@@ -58,7 +59,7 @@
 - PostgreSQL state machine;
 - Worker lease and distributed scheduling;
 - exactly-once external tool effects;
-- Enterprise completion and approval workflows;
+- Enterprise completion gates and durable approval coordination;
 - RAG pipelines and vector-store product APIs;
 - TTS and realtime voice;
 - multi-agent teams;

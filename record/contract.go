@@ -1,5 +1,5 @@
-// Package record provides versioned, integrity-linked journals for Agent
-// lifecycle events. Recording never implies model or Tool re-execution.
+// Package record 为 Agent 生命周期事件提供版本化、完整性链接的日志账本。
+// 记录从不意味着重新执行模型或 Tool。
 package record
 
 import (
@@ -14,8 +14,8 @@ import (
 
 const ProtocolV1 = "tiggy.runtime.record.v1"
 
-// Entry is one immutable journal record. Digest authenticates the Entry's
-// fields and PreviousDigest links it to the prior Event in the same Run.
+// Entry 是一条不可变账本记录。
+// Digest 认证本条字段；PreviousDigest 链到同一 Run 的前一条 Event。
 type Entry struct {
 	ProtocolVersion string      `json:"protocol_version"`
 	RunID           string      `json:"run_id"`
@@ -31,8 +31,8 @@ func (e Entry) Clone() Entry {
 	return cloned
 }
 
-// Validate checks one Entry and its optional predecessor. It does not prove
-// that a Run is complete; Recording.ValidateComplete provides that guarantee.
+// Validate 校验单条 Entry 及其可选前驱；不证明 Run 已完成。
+// 完整性由 Recording.ValidateComplete 保证。
 func (e Entry) Validate(previous *Entry) error {
 	if e.ProtocolVersion != ProtocolV1 {
 		return fmt.Errorf("unsupported recording protocol %q", e.ProtocolVersion)

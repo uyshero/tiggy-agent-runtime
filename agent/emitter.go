@@ -8,6 +8,8 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/event"
 )
 
+// emitter 为单次 Run 生成有序生命周期事件，并同步投递给 Sink。
+// 终态事件之后禁止再 emit；Sink 失败会被锁存，避免重复投递。
 type emitter struct {
 	runID    string
 	ids      IDGenerator
@@ -19,11 +21,12 @@ type emitter struct {
 	events   []event.Event
 }
 
+// emit 构造、校验并投递一条事件；payload 会被 JSON 序列化进 Event.Payload。
 func (e *emitter) emit(eventType event.Type, parentID string, payload any) (event.Event, error) {
 	if e.terminal {
 		return event.Event{}, fmt.Errorf("cannot emit %q after terminal event", eventType)
 	}
-	if eventType == event.RunCompleted || eventType == event.RunFailed || eventType == event.RunCanceled {
+	if eventType == event.RunCompleted || eventType == event.RunFailed || eventType == event.RunCanceled || eventType == event.RunSuspended {
 		e.terminal = true
 	}
 	raw, err := json.Marshal(payload)

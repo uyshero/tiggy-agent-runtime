@@ -5,12 +5,14 @@ import (
 	"strings"
 )
 
+// ErrorClass 对 Run 失败做稳定分类，便于观测与上层映射。
 type ErrorClass string
 
 const (
 	ErrorInvalidInput ErrorClass = "invalid_input"
 	ErrorModel        ErrorClass = "model"
 	ErrorToolRuntime  ErrorClass = "tool_runtime"
+	ErrorApproval     ErrorClass = "approval"
 	ErrorArtifact     ErrorClass = "artifact"
 	ErrorMemory       ErrorClass = "memory"
 	ErrorLimit        ErrorClass = "limit"
@@ -19,6 +21,7 @@ const (
 	ErrorInternal     ErrorClass = "internal"
 )
 
+// RunError 是一次 Agent Run 的终态错误；SafeMessage 可对模型/用户展示。
 type RunError struct {
 	Class       ErrorClass
 	Code        string

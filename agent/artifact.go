@@ -12,6 +12,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
 
+// toolResultProjection 是工具结果投影（可能卸载为 Artifact）后的编排结果。
 type toolResultProjection struct {
 	result   tool.Result
 	err      *RunError
@@ -19,6 +20,7 @@ type toolResultProjection struct {
 	canceled bool
 }
 
+// projectToolResult 在配置了 Offloader 时，把超限 Tool Result 卸载到 Artifact Store。
 func (a *Agent) projectToolResult(
 	ctx context.Context,
 	runID string,

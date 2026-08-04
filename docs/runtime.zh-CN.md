@@ -3,7 +3,7 @@
 ## API 与所有权
 
 - `agent.New` 校验配置并生成不可变 Agent；当注入的 Model 和 Tool 支持并发时，同一个 Agent 可被多个调用方并发复用。
-- `Run` 从空 State 开始，`Continue` 只接受没有未完成 Tool Call 的完整 State。
+- `Run` 从空 State 开始，`Continue` 只接受没有未完成 Tool Call 的完整 State；`Resume` 只接受通过校验的审批 Suspension 和精确完整的决定集合。
 - 每次 Run 复制输入 State、Model Request、Toolkit 定义和返回结果；调用方不能通过保留 Slice 修改运行中状态。
 - Toolkit 在 Run 开始时创建快照。Run 期间注册的新工具只对后续 Run 可见。
 - 激活 Skill 是不可变 Agent 配置，其指令只进入初始 System Message；`run.started` 只记录 Name/Version/Digest 来源，不记录内容正文。
@@ -11,7 +11,7 @@
 - 可选的每 Model Context Compressor 只能在 Provider Request View 中替换 Core 选择的非活跃历史组，完整 State 保持不变。
 - 可选 Artifact Offloader 在成功 Tool Call 之后、Result 进入 State 之前运行。Offload 后 State 保存 Digest-bound Reference，完整 Result 保留在注入 Store 中。
 - 可选 Memory Port 在 Model Execution 前 Recall 一次，在成功 Response Commit 后 Observe 一次。Recall Evidence 只改变 Model Request View；Observe 只接收当前 Turn 新增的 Message。
-- `Result.State` 是本次运行的独立快照，可用于应用自己管理的后续 `Continue`，不是持久化恢复协议。
+- `Result.State` 是本次运行的独立快照，可用于应用自己管理的后续 `Continue` 或 `Resume`；仅做序列化不等于具备持久化调度。
 
 ## 执行与失败
 
@@ -24,7 +24,9 @@ Tool 失败分为两类：
 - `tool.Error` 是已脱敏、模型可处理的失败，被写为 `ToolResult(IsError=true)`，Run 继续；
 - 普通 error、panic、非法 Tool Result 属于 Runtime Failure，写入安全的中断 Tool Result 后终止 Run。
 
-所有终止路径都关闭未完成 Tool Call，因此返回 State 不会留下悬空 Call。
+Completed、Failed 和 Canceled 路径都会关闭未完成 Tool Call。`StatusSuspended` 会有意保留一个通过 Digest 绑定的 Pending Tool Batch，并以 `run.suspended` 终止当前调用，详见 [Tool 人工审批与恢复语义](./approval.zh-CN.md)。
+
+可选 `ApprovalPolicy` 会在模型生成的整批 Tool Call 执行前完成判断。只要其中一个需要人工决定，整批零副作用暂停。Resume 校验参数与 Tool Definition Digest，按原始顺序应用全部决定，且不会再次调用 Policy。拒绝会成为模型可见的 Tool Error，而不是 Runtime Failure。
 
 Artifact Offload 只处理成功 Tool Result；模型可处理的安全 Tool Error 保持内联。已配置 Offloader 接收独立、版本化 Payload，每个 Result 最多调用一次；Store/Offloader 失败、非法 Decision、Payload Limit 和取消都不会退回为静默内联一个违反边界的大结果。Runtime 写入明确 Error Tool Result 后终止。由于取消可能与已完成 Put 竞争，Store 可能留下未引用对象；Core 不自动执行 Delete。
 
@@ -68,7 +70,7 @@ Context Planning 使用同一取消边界。Counter/Planner 失败会终止 Run�
 
 ## Event Sink
 
-Sink 同步接收严格有序的 Event。回调返回 error 表示消费者不能继续，Runtime 立即停止，不再向该 Sink 投递事件。`Result.Events` 仍保存 Runtime 内部完成的诊断轨迹，并保证操作 Start/Completed 配对和恰好一个终止事件。
+Sink 同步接收严格有序的 Event。回调返回 error 表示消费者不能继续，Runtime 立即停止，不再向该 Sink 投递事件。`Result.Events` 仍保存 Runtime 内部完成的诊断轨迹，并保证操作 Start/Completed 配对和恰好一个终止事件，包括 `run.suspended`。
 
 Sink 失败语义：
 
@@ -83,4 +85,4 @@ Sink 失败语义：
 
 ## 当前非目标
 
-State 和 Event 只提供进程内正确性与诊断，不承诺进程崩溃恢复、跨进程重放、外部副作用 exactly-once 或数据库 Durable State Machine。
+State 和 Event 只提供进程内正确性与诊断。审批 State 可以由应用持久化，但 Core 不承诺进程崩溃恢复、单恢复者协调、跨进程重放、外部副作用 Exactly-once 或数据库 Durable State Machine。

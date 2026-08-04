@@ -24,7 +24,7 @@ const (
 
 const defaultToolTimeout = 60 * time.Second
 
-// Limits bound remote discovery and each Tool call. Zero fields use defaults.
+// Limits 限制远程发现与每次 Tool 调用；零值字段使用默认值。
 type Limits struct {
 	MaxTools         int
 	MaxPages         int
@@ -35,7 +35,7 @@ type Limits struct {
 	ToolTimeout      time.Duration
 }
 
-// DefaultLimits returns conservative MCP client limits.
+// DefaultLimits 返回偏保守的 MCP Client 边界。
 func DefaultLimits() Limits {
 	return Limits{
 		MaxTools: defaultMaxTools, MaxPages: defaultMaxPages,
@@ -74,8 +74,8 @@ func normalizeLimits(value Limits) (Limits, error) {
 	return value, nil
 }
 
-// ClientOptions configures lifecycle and the definitions exposed as native
-// Tools. Sequential execution is the conservative default.
+// ClientOptions 配置生命周期，以及作为原生 Tool 暴露的定义。
+// 默认并发类别为 sequential（保守）。
 type ClientOptions struct {
 	Connector        Connector
 	Limits           Limits
@@ -90,9 +90,8 @@ const (
 	stateClosed
 )
 
-// Client owns one current MCP Session and immutable discovered Tool snapshots.
-// Connect, Reconnect, and Close are serialized. Tool calls may overlap only
-// when their Definition explicitly declares the safe concurrency class.
+// Client 持有当前 MCP Session 与不可变的已发现 Tool 快照。
+// Connect / Reconnect / Close 串行；仅当 Definition 显式声明 safe 时，Tool 调用才可重叠。
 type Client struct {
 	lifecycle sync.Mutex
 	mu        sync.RWMutex
@@ -105,7 +104,7 @@ type Client struct {
 	tools     []tool.Tool
 }
 
-// NewClient constructs a disconnected MCP client.
+// NewClient 构造处于未连接状态的 MCP Client。
 func NewClient(options ClientOptions) (*Client, error) {
 	if options.Connector == nil {
 		return nil, &Error{Code: ErrorInvalidConfig, Cause: fmt.Errorf("MCP connector is required")}
@@ -124,8 +123,7 @@ func NewClient(options ClientOptions) (*Client, error) {
 	return &Client{connector: options.Connector, limits: limits, class: class}, nil
 }
 
-// Connect establishes and fully discovers a new session. A discovery failure
-// closes the candidate session and leaves the Client disconnected.
+// Connect 建立并完整发现新 Session；发现失败会关闭候选 Session 并保持未连接。
 func (c *Client) Connect(ctx context.Context) error {
 	if ctx == nil {
 		return &Error{Code: ErrorInvalidConfig, Cause: fmt.Errorf("context is nil")}

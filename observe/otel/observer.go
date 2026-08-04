@@ -1,5 +1,5 @@
-// Package otel adapts Tiggy lifecycle events to OpenTelemetry traces and
-// metrics. Applications own Provider, Reader, Exporter, and shutdown lifecycle.
+// Package otel 将 Tiggy 生命周期事件适配为 OpenTelemetry 追踪与指标。
+// Provider / Reader / Exporter 与关闭生命周期由应用方拥有。
 package otel
 
 import (
@@ -19,23 +19,25 @@ import (
 
 const instrumentationName = "github.com/uyshero/tiggy-agent-runtime/observe/otel"
 
-// ParentContext resolves the parent of a new Run span. It receives an owned
-// run.started Event and must be concurrency-safe. A nil result is invalid.
+// ParentContext 解析新 Run span 的父上下文。
+// 接收一份自有的 run.started Event，且必须并发安全；返回 nil 无效。
 type ParentContext func(event.Event) context.Context
 
+// Options 注入 Tracer/Meter Provider 与可选父上下文解析。
 type Options struct {
 	TracerProvider oteltrace.TracerProvider
 	MeterProvider  otelmetric.MeterProvider
 	ParentContext  ParentContext
 }
 
-// Observer converts one or more complete Run event streams to OTel spans and
-// metrics. It is concurrency-safe and does not own or shut down Providers.
+// Observer 把一个或多个完整 Run 事件流转为 OTel span 与指标。
+// 并发安全，不拥有也不关闭 Providers。
 type Observer struct {
 	trace   *traceObserver
 	metrics *observe.Metrics
 }
 
+// New 构造 Observer；TracerProvider 与 MeterProvider 必填。
 func New(options Options) (*Observer, error) {
 	if options.TracerProvider == nil || options.MeterProvider == nil {
 		return nil, fmt.Errorf("TracerProvider and MeterProvider are required")
@@ -173,7 +175,7 @@ func (o *traceObserver) Sink(value event.Event) error {
 	switch value.Type {
 	case event.RunStarted:
 		return o.startRun(value)
-	case event.RunCompleted, event.RunFailed, event.RunCanceled:
+	case event.RunCompleted, event.RunFailed, event.RunCanceled, event.RunSuspended:
 		return o.finishRun(value)
 	case event.ModelCallStarted, event.ToolCallStarted, event.ContextPrepareStarted,
 		event.CompressionStarted, event.ToolResultOffloadStarted,
@@ -184,7 +186,8 @@ func (o *traceObserver) Sink(value event.Event) error {
 		event.ToolResultOffloadCompleted, event.ToolResultOffloadFailed,
 		event.MemoryRecallCompleted, event.MemoryObserveCompleted, event.MemoryObserveFailed:
 		return o.finishOperation(value)
-	case event.RuntimeError, event.RetryScheduled, event.FallbackActivated, event.LimitReached:
+	case event.RuntimeError, event.RetryScheduled, event.FallbackActivated, event.LimitReached,
+		event.ApprovalRequired, event.ApprovalResolved:
 		return o.addRunEvent(value)
 	case event.ModelCallDelta, event.ToolCallDelta:
 		return nil
@@ -305,7 +308,7 @@ func (o *traceObserver) finishRun(value event.Event) error {
 			attribute.String("tiggy.error.code", payload.Error.Code),
 		)
 	}
-	if payload.Status != "completed" {
+	if payload.Status != "completed" && payload.Status != "suspended" {
 		root.SetStatus(codes.Error, payload.Status)
 	}
 	root.End(oteltrace.WithTimestamp(value.CreatedAt))

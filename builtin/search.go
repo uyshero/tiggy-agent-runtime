@@ -34,8 +34,7 @@ func (e *searchLimitError) Error() string {
 	return "search exceeded the configured " + e.limit + " limit"
 }
 
-// SearchLimits bound recursive filesystem discovery and model-visible output.
-// Zero fields use DefaultSearchLimits.
+// SearchLimits 限制递归文件系统发现与模型可见输出；零值字段使用 DefaultSearchLimits。
 type SearchLimits struct {
 	MaxEntries     int
 	MaxResults     int

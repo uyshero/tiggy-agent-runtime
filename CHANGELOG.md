@@ -4,8 +4,13 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+No changes yet.
+
+## [0.1.0] - 2026-08-04
+
 ### Added
 
+- Process-local Tool approval policy with whole-batch zero-effect suspension, serializable digest-bound continuations, exact Resolution validation, `Agent.Resume`, approval lifecycle Events, and deterministic resume/rejection/tamper tests.
 - Provider-neutral Message, Model, Usage, Provider Error, and Event Protocol V1 contracts.
 - Bounded sequential Agent runtime with complete State validation and one terminal event.
 - Native Tool and Toolkit contracts with immutable per-run registry snapshots.
@@ -32,9 +37,13 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 - Versioned Run Recorder with per-Event SHA-256 chains, partial/complete structural validation, default Model Delta and unknown-payload redaction, bounded concurrent recording, process-local Memory Journal, and caller-owned JSONL Journal/Reader.
 - Deterministic `agenttest.FaultInjector` with exact-call Context Planner/Compressor/Token Counter and Memory Recall/Observe faults, panic/error/invalid-result/after-delegate actions, cancellation Watch synchronization, owned boundary values, and no implicit retry.
 - Separate release-readiness documentation and a non-destructive repository audit for history, worktree, module, replacement, license, security-policy, changelog, and optional tag checks.
-- A normal-CI vulnerability scan using the pinned `govulncheck` command; external MCP compatibility remains scheduled and opt-in.
+- A normal-CI fail-closed license gate for the complete reviewed Go module graph and a vulnerability scan using the pinned `govulncheck` command; external MCP compatibility remains scheduled and opt-in.
+- An `agenttest` integration guide backed by a compiled Model-Tool-Model example covering full projected-context inspection, request assertions, deterministic IDs/time, call counts, final output, and trace invariants.
+- A bilingual Getting Started guide that connects the offline example, Provider Adapter contract, Toolkit, RunStream, Memory, MCP, Skills, context planning, recording, and integration tests without implying bundled infrastructure.
 
 ### Changed
+
+- Run terminal semantics now include `run.suspended`; completed, failed, and canceled States remain Tool-complete while a suspended State retains exactly one validated pending Tool batch.
 
 - The minimum Go toolchain is 1.25.12 because earlier Go 1.25 patch releases contain reachable `net/url` and `os.Root` vulnerabilities.
 - Toolkit now preserves a Tool-supplied `tool.RuntimeError` and its stable code.
@@ -51,4 +60,11 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 ### Compatibility
 
 - This is the initial pre-release contract. No backward-compatible release baseline exists yet.
-- Public distribution remains blocked until repository ownership and licensing are approved.
+- Pre-v1 public APIs and protocols may change when documented in this changelog.
+- Go 1.25.12 or later is required.
+
+### Known Limitations
+
+- `Run`, `Continue`, and `Resume` are process-local invocations; Core does not provide database checkpoints, Worker leases, or exactly-once external Tool effects.
+- `command/local` and MCP stdio launch host processes and are not security sandboxes.
+- The bundled Memory and Recorder implementations are process-local references; durable storage remains application-owned.
