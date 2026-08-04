@@ -1,0 +1,29 @@
+{
+  "id": "msg_artifact_1",
+  "role": "tool",
+  "visibility": "internal",
+  "content": [
+    {
+      "type": "tool_result",
+      "tool_result": {
+        "call_id": "call_report_1",
+        "name": "report",
+        "content": [
+          {
+            "type": "artifact",
+            "artifact": {
+              "object_ref_id": "objects/reports/result-1",
+              "name": "tool-result-call_report_1.json",
+              "media_type": "application/vnd.tiggy.tool-result+json;version=1",
+              "size_bytes": 4096,
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "state": {
+          "offloaded": true
+        }
+      }
+    }
+  ]
+}

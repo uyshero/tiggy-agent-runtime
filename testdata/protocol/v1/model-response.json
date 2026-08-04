@@ -1,0 +1,24 @@
+{
+  "message": {
+    "id": "msg_assistant_2",
+    "role": "assistant",
+    "visibility": "public",
+    "content": [
+      {
+        "type": "text",
+        "text": "It is 28 degrees Celsius."
+      }
+    ]
+  },
+  "stop_reason": "complete",
+  "provider_request_id": "provider_request_1",
+  "usage": {
+    "input_tokens": 100,
+    "output_tokens": 12,
+    "total_tokens": 112,
+    "cached_input_tokens": 20,
+    "reasoning_tokens": 3,
+    "cost_micros": 125,
+    "source": "provider"
+  }
+}

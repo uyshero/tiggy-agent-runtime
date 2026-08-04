@@ -1,0 +1,68 @@
+# 可观测性语义
+
+## 边界
+
+`observe` 把已有 Version 1 Lifecycle Event Stream 转换为日志和指标；它拿不到可变 Agent State，也不改变 Runtime Decision。应用把 Observer Sink 传给 `RunStream` 或 `Continue`；Agent Config 和 `event` 基础协议不导入日志或遥测框架。
+
+Event Sink 仍是同步边界。直接传给 Agent 的 Sink 是严格模式：Error 或 Panic 会成为 Event Sink Failure 并停止投递。`observe.BestEffort` 会隔离 Error 和 Panic，调用可选诊断 Handler 后返回 nil。审计或可靠投递使用严格模式；不能影响 Run 的运行日志和遥测使用 Best Effort。
+
+`observe.Chain` 按顺序调用非 nil Sink。每个 Sink 都收到独立 Event/Payload 副本，因此一个 Observer 不能修改下一个 Observer 的输入。严格模式下首个 Error 会停止 Chain。这些 Helper 不启动 goroutine、不持有 Queue，也无法抢占一个阻塞不返回的 Callback。
+
+新增 Event Type 保持前向兼容。LogSink 只记录未知 Event 的 Envelope；Metrics 和 OTel 在定义明确的隐私与基数映射前忽略未知 Payload。
+
+## 结构化日志
+
+`observe.LogSink` 使用 Event Timestamp 写入 `slog.Record`，默认 Level 为：
+
+- Operation Start 和 Delta：Debug；
+- 正常 Outcome 与 Completed Run：Info；
+- Cancellation、Retry、Fallback 和 Limit：Warn；
+- Failed Run、Runtime Error 与 Failed Operation：Error。
+
+Logger 接收 Correlation ID、Event Type/Sequence、有界 Operation Metadata、Token Count 和安全的 `event.ErrorPayload` 字段，但绝不记录原始 Event Payload。尤其不会记录 Model Delta Text/Reasoning、Tool Argument Fragment、Message Content、Artifact Body、Memory Text、Scope Key 或 Provenance ID。Logger 的二次脱敏、输出位置、保留周期和访问控制仍由应用负责。
+
+## 指标
+
+`observe.Metrics` 消费从 `run.started` 开始的完整 Event Stream，通过 Event Parent ID 关联成对 Operation，并记录：
+
+- Run Count、Duration、Token Usage 与 Cost Micros；
+- Model/Tool Call Count 与 Duration；
+- Context Prepare/Compression Count 与 Duration；
+- Artifact Offload/Memory Operation Count 与 Duration；
+- Retry、Fallback 和 Limit Count。
+
+指标使用 Tiggy 自有的 `Measurement`、`Attribute` 和 `Recorder` Contract；Duration 单位是毫秒。一个 Metrics 实例可并发服务多个 Run，并在 Terminal Event 清理 Run/Operation 关联状态，包括异常终止时仍未完成的 Operation。
+
+Metric Attribute 明确排除 Run ID、Event ID、Call ID、Memory Namespace/Scope Key、Error Code 和自由文本 Reason。允许的有界维度包括 Agent Name、已配置 Model Identity、已配置 Tool Name、Operation/Status、Usage Source、Token Type、Context Pressure、Compression Strategy、Tool Error 布尔值和 Error Class。部署仍需限制 Agent、Model、Tool 与 Strategy 配置值的数量。
+
+## OpenTelemetry Adapter
+
+`observe/otel` 使用官方 OpenTelemetry Go API，把 Run 以及配对的 Model、Tool、Context、Compression、Artifact 和 Memory Operation 映射为带 Event Timestamp 和父子关系的 Span，并通过 OTel Instrument 导出同一套 Metrics。Delta Body 不会写入 Span。
+
+构造函数要求应用提供并拥有 `trace.TracerProvider` 和 `metric.MeterProvider`。Adapter 不创建 Exporter、不启动网络 Client、不执行 Flush，也不调用 Provider `Shutdown`。Resource、Sampling、Reader/Exporter、Batch、Timeout 和 Shutdown 顺序全部由应用配置。可选且并发安全的 `ParentContext` 能把每个 Run Span 连接到入口 Trace；它的非法结果和 Panic 属于 Observer Failure，可用 `BestEffort` 隔离。
+
+OTel Span Attribute 可以携带 Run/Event Correlation ID 和安全 Error Code，因为 Trace 是诊断记录而非 Metric Dimension；但仍不包含原始 Prompt、Model Delta、Tool Argument/Result、Memory Content、Scope Key 或 Artifact Body。
+
+## 示例
+
+```go
+logSink, err := observe.LogSink(logger, observe.LogOptions{})
+if err != nil {
+    return err
+}
+telemetry, err := tiggyotel.New(tiggyotel.Options{
+    TracerProvider: tracerProvider,
+    MeterProvider:  meterProvider,
+})
+if err != nil {
+    return err
+}
+
+sink := observe.Chain(
+    observe.BestEffort(logSink, reportObserverError),
+    observe.BestEffort(telemetry.Sink, reportObserverError),
+)
+result, err := runtime.RunStream(ctx, input, sink)
+```
+
+诊断 Error Handler 不能再次写入同一个失败 Sink。Best Effort 不会把阻塞 Observer 自动变成异步；有界异步导出仍是应用或 Provider 的责任。

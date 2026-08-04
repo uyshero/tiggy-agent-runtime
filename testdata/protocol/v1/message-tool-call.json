@@ -1,0 +1,24 @@
+{
+  "id": "msg_assistant_1",
+  "role": "assistant",
+  "visibility": "public",
+  "content": [
+    {
+      "type": "text",
+      "text": "I will check the current weather."
+    },
+    {
+      "type": "tool_call",
+      "tool_call": {
+        "id": "call_weather_1",
+        "name": "weather.lookup",
+        "arguments": {
+          "city": "Hangzhou"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "fixture": "v1"
+  }
+}

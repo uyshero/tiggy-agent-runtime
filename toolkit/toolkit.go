@@ -1,0 +1,309 @@
+// Package toolkit registers tools and creates immutable per-run views.
+package toolkit
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"runtime/debug"
+	"sort"
+	"strings"
+	"sync"
+
+	"github.com/uyshero/tiggy-agent-runtime/message"
+	"github.com/uyshero/tiggy-agent-runtime/model"
+	"github.com/uyshero/tiggy-agent-runtime/tool"
+)
+
+type argumentValidator interface {
+	Validate(any) error
+}
+
+type registeredTool struct {
+	tool       tool.Tool
+	definition model.ToolDefinition
+	validator  argumentValidator
+	groups     map[string]struct{}
+}
+
+type Registration struct {
+	Tool      tool.Tool
+	Namespace string
+	Groups    []string
+}
+
+type Toolkit struct {
+	mu    sync.RWMutex
+	tools map[string]registeredTool
+}
+
+func New(values ...tool.Tool) (*Toolkit, error) {
+	kit := &Toolkit{tools: make(map[string]registeredTool, len(values))}
+	for _, value := range values {
+		if err := kit.Register(value); err != nil {
+			return nil, err
+		}
+	}
+	return kit, nil
+}
+
+func (t *Toolkit) Register(value tool.Tool) error {
+	return t.RegisterWith(Registration{Tool: value})
+}
+
+func (t *Toolkit) RegisterWith(registration Registration) error {
+	if registration.Tool == nil {
+		return fmt.Errorf("tool is required")
+	}
+	definition, err := readDefinition(registration.Tool)
+	if err != nil {
+		return err
+	}
+	definition = definition.Clone()
+	if err := definition.Validate(); err != nil {
+		return err
+	}
+	name, err := qualifiedName(registration.Namespace, definition.Name)
+	if err != nil {
+		return err
+	}
+	definition.Name = name
+	groups, err := normalizeGroups(registration.Groups)
+	if err != nil {
+		return err
+	}
+	validator, err := compileInputSchema(name, definition.InputSchema)
+	if err != nil {
+		return fmt.Errorf("compile input schema for tool %q: %w", name, err)
+	}
+
+	entry := registeredTool{
+		tool: registration.Tool, definition: definition.Clone(), validator: validator, groups: groups,
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, exists := t.tools[name]; exists {
+		return fmt.Errorf("tool %q is already registered", name)
+	}
+	t.tools[name] = entry
+	return nil
+}
+
+func (t *Toolkit) Groups() []string {
+	if t == nil {
+		return nil
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	unique := make(map[string]struct{})
+	for _, entry := range t.tools {
+		for group := range entry.groups {
+			unique[group] = struct{}{}
+		}
+	}
+	groups := make([]string, 0, len(unique))
+	for group := range unique {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	return groups
+}
+
+// View is an immutable registry snapshot owned by one run.
+type View struct {
+	tools       map[string]registeredTool
+	definitions []model.ToolDefinition
+}
+
+func (t *Toolkit) Snapshot() View {
+	if t == nil {
+		return emptyView()
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return snapshot(t.tools, nil)
+}
+
+// SnapshotGroups returns the union of the requested groups. Unknown groups
+// are rejected so configuration typos cannot silently remove capabilities.
+func (t *Toolkit) SnapshotGroups(groups ...string) (View, error) {
+	if t == nil {
+		return View{}, fmt.Errorf("toolkit is required")
+	}
+	requested, err := normalizeGroups(groups)
+	if err != nil {
+		return View{}, err
+	}
+	if len(requested) == 0 {
+		return emptyView(), nil
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	known := make(map[string]struct{})
+	for _, entry := range t.tools {
+		for group := range entry.groups {
+			known[group] = struct{}{}
+		}
+	}
+	for group := range requested {
+		if _, exists := known[group]; !exists {
+			return View{}, fmt.Errorf("tool group %q is not registered", group)
+		}
+	}
+	return snapshot(t.tools, requested), nil
+}
+
+func (v View) Definitions() []model.ToolDefinition {
+	values := make([]model.ToolDefinition, len(v.definitions))
+	for index, definition := range v.definitions {
+		values[index] = definition.Clone()
+	}
+	return values
+}
+
+func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Result, err error) {
+	if err := ctx.Err(); err != nil {
+		return tool.Result{}, err
+	}
+	if err := call.Validate(); err != nil {
+		return tool.Result{}, tool.NewError("invalid_tool_arguments", "The tool arguments are invalid JSON.", false, err)
+	}
+	if strings.TrimSpace(call.ArgumentsError) != "" {
+		return tool.Result{}, tool.NewError("invalid_tool_arguments", "The tool arguments could not be parsed.", false, errors.New(call.ArgumentsError))
+	}
+	entry, exists := v.tools[call.Name]
+	if !exists {
+		return tool.Result{}, tool.NewError("unsupported_tool", "The requested tool is not available.", false, nil)
+	}
+	instance, err := decodeJSON(call.Arguments)
+	if err != nil {
+		return tool.Result{}, tool.NewError("invalid_tool_arguments", "The tool arguments are invalid JSON.", false, err)
+	}
+	if err := validateInput(entry.validator, instance); err != nil {
+		var panicError *schemaPanicError
+		if errors.As(err, &panicError) {
+			return tool.Result{}, &tool.RuntimeError{Code: "schema_validation_failed", Cause: err}
+		}
+		return tool.Result{}, tool.NewError("invalid_tool_arguments", "The tool arguments do not match the required schema.", false, err)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = &tool.RuntimeError{
+				Code:  "tool_panic",
+				Cause: fmt.Errorf("panic: %v\n%s", recovered, debug.Stack()),
+			}
+		}
+	}()
+	result, err = entry.tool.Execute(ctx, append(json.RawMessage(nil), call.Arguments...))
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return tool.Result{}, ctxErr
+	}
+	if err != nil {
+		var runtimeFailure *tool.RuntimeError
+		if errors.As(err, &runtimeFailure) {
+			return tool.Result{}, runtimeFailure
+		}
+		var safe *tool.Error
+		if errors.As(err, &safe) {
+			return tool.Result{}, safe
+		}
+		return tool.Result{}, &tool.RuntimeError{Code: "tool_execution_failed", Cause: err}
+	}
+	validation := message.ToolResult{CallID: call.ID, Name: call.Name, Content: result.Content, State: result.State}
+	if err := validation.Validate(); err != nil {
+		return tool.Result{}, &tool.RuntimeError{Code: "invalid_tool_result", Cause: err}
+	}
+	result.Content = message.CloneContent(result.Content)
+	result.State = append(json.RawMessage(nil), result.State...)
+	return result, nil
+}
+
+func snapshot(values map[string]registeredTool, groups map[string]struct{}) View {
+	view := View{tools: make(map[string]registeredTool)}
+	for name, entry := range values {
+		if len(groups) > 0 && !inAnyGroup(entry.groups, groups) {
+			continue
+		}
+		view.tools[name] = entry
+		view.definitions = append(view.definitions, entry.definition.Clone())
+	}
+	sort.Slice(view.definitions, func(first, second int) bool {
+		return view.definitions[first].Name < view.definitions[second].Name
+	})
+	return view
+}
+
+func emptyView() View {
+	return View{tools: map[string]registeredTool{}}
+}
+
+func inAnyGroup(toolGroups, requested map[string]struct{}) bool {
+	for group := range requested {
+		if _, exists := toolGroups[group]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeGroups(values []string) (map[string]struct{}, error) {
+	groups := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		group := strings.TrimSpace(value)
+		if err := validateQualifiedName("tool group", group, 64); err != nil {
+			return nil, err
+		}
+		groups[group] = struct{}{}
+	}
+	return groups, nil
+}
+
+func qualifiedName(namespace, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if err := validateQualifiedName("tool name", name, 128); err != nil {
+		return "", err
+	}
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		return name, nil
+	}
+	if err := validateQualifiedName("tool namespace", namespace, 64); err != nil {
+		return "", err
+	}
+	qualified := namespace + "." + name
+	if len(qualified) > 128 {
+		return "", fmt.Errorf("qualified tool name exceeds 128 bytes")
+	}
+	return qualified, nil
+}
+
+func validateQualifiedName(kind, value string, maximum int) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", kind)
+	}
+	if len(value) > maximum {
+		return fmt.Errorf("%s exceeds %d bytes", kind, maximum)
+	}
+	for _, segment := range strings.Split(value, ".") {
+		if segment == "" {
+			return fmt.Errorf("%s %q contains an empty segment", kind, value)
+		}
+		for index, char := range []byte(segment) {
+			allowed := char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' || char == '-'
+			if !allowed || index == 0 && char == '-' {
+				return fmt.Errorf("%s %q contains an unsupported character", kind, value)
+			}
+		}
+	}
+	return nil
+}
+
+func readDefinition(value tool.Tool) (definition model.ToolDefinition, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("tool definition panic: %v\n%s", recovered, debug.Stack())
+		}
+	}()
+	return value.Definition(), nil
+}

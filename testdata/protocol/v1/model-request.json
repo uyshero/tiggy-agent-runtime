@@ -1,0 +1,42 @@
+{
+  "run_id": "run_1",
+  "call_id": "model_1",
+  "purpose": "agent",
+  "model": {
+    "provider": "example",
+    "model": "example-chat",
+    "revision": "2026-08-01"
+  },
+  "messages": [
+    {
+      "id": "msg_user_1",
+      "role": "user",
+      "visibility": "public",
+      "content": [
+        {
+          "type": "text",
+          "text": "What is the weather?"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "weather.lookup",
+      "description": "Look up weather by city.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": ["city"]
+      }
+    }
+  ],
+  "max_output_tokens": 1024,
+  "parameters": {
+    "temperature": 0
+  }
+}
