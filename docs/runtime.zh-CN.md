@@ -15,9 +15,11 @@
 
 ## 执行与失败
 
-Runtime 顺序执行 Model 和 Tool，直到模型完成、取消、失败或达到边界。当前边界包括迭代次数、模型调用次数、工具调用次数、累计 Token、单次输出 Token 和总时长。
+Runtime 顺序执行 Model 和 Tool，直到模型完成、取消、失败或达到边界。当前边界包括迭代次数、模型调用次数、工具调用次数、累计 Token、单次输出 Token、单次调用流式 Delta 数量/字节和总时长。
 
 总时长通过 Context 传播到 Model 和 Tool。Event Sink 是调用方代码，必须及时返回或自行实现有界 I/O；Runtime 无法抢占一个阻塞且不返回的回调。
+
+`MaxModelDeltasPerCall` 和 `MaxModelDeltaBytesPerCall` 在 Delta 进入 Event Sink 或 `Result.Events` 之前检查；字节预算统计 Delta 所有可变长字符串字段的 UTF-8 字节，且不会为统计复制正文，固定事件信封开销由数量上限约束。任一预算超限都会以 `limit/max_model_deltas` 或 `limit/max_model_delta_bytes` 终止 Run。首次超限会被锁存，因此异常 Provider Adapter 即使忽略 DeltaSink Error，也不能继续扩大诊断事件轨迹；但它仍可能占用自己的 `Generate` 调用，直到返回或响应 Context 取消。Runtime 会串行化并发回调，并在 `Generate` 返回时关闭 Delta 入口，防止晚到回调改变事件序列。这两个新增字段为零时自动使用默认值，使旧版显式 `Limits` 保持兼容；负值会被拒绝。
 
 Tool 失败分为两类：
 
@@ -34,6 +36,8 @@ Artifact Offload 只处理成功 Tool Result；模型可处理的安全 Tool Err
 
 Memory Recall/Observe 接收独立 Value 和 Run Context。普通 Adapter Failure 默认 Degrade，也可配置为 `fail_run`。Cancellation 始终取消 Run；Panic、非法/跨 Scope Recall Result 和 Recall Limit Violation 始终 Fatal。Agent 在每次模型投影前过滤过期 Recall Item。Observe 只在 Final Assistant Response 及 Model Call Completed Event 之后开始；Degraded Observe 保留 Completed Result。Memory Event 暴露 Active/Expired Count 和 Namespace，不暴露 Text、Observed Message、Expiry、Provenance Correlation 或 Scope Key。
 
+新 Runtime 的每个 `model.call.started` Event 都携带可选的无正文 Context Manifest，对该次物理 Provider Request 记录固定数量的 Message/Role/Visibility/Projection/Content/Tool Definition 计数与字节，包括压缩前和最终 Message 数。旧 Protocol V1 Event 可以缺失该字段。详见 [Context 诊断快照](./context-diagnostics.zh-CN.md)。
+
 ## Model Retry 与 Fallback
 
 默认 Failure Policy 是 fail-fast，不会隐式重试。需要瞬时故障恢复时，调用方可以配置 `TransientModelFailurePolicy` 和有序 `Fallbacks`：
@@ -48,16 +52,19 @@ agent.Config{
         BaseDelay: 200 * time.Millisecond,
         MaxDelay: 2 * time.Second,
         EnableFallback: true,
+        EnableContextRecovery: true,
     },
 }
 ```
 
-- 只有 Provider Adapter 明确设置 `ProviderError.Retryable=true` 时，内置 Policy 才会恢复；
+- 内置 Policy 只在 Provider Adapter 明确设置 `ProviderError.Retryable=true` 时重试普通失败；
+- `EnableContextRecovery` 是独立的显式开关：当 Target 同时有 Planner 和 Compressor 时，`ErrorContextLength` 最多触发一次结构安全压缩和同 Target 重试；
 - Retry 使用相同 State 和 Model Target，但生成新的 Call ID；Fallback 切换到下一个显式配置的 Model Target；
 - 每次物理尝试都计入 `MaxModelCalls`，所以自定义 Policy 也无法无限重试；
 - 退避等待响应 Context 取消，并停止、清空内部 Timer；
 - `retry.scheduled` 和 `fallback.activated` 记录失败 Call、目标、原因与延迟；
 - Model 可能在失败前已产生 Delta，消费者必须按 Call ID 区分尝试；
+- Provider Adapter 必须在 DeltaSink 返回 Error 后停止流式生成；即使 Adapter 违反该约定，Core 仍会限制保留的 Delta 事件；
 - Tool 不自动重试，因为 Runtime 无法假设外部副作用可重复执行。
 
 自定义 `ModelFailurePolicy` 必须并发安全。非法 Decision 或 panic 会被隔离为 `model_failure_policy_failed`，不会破坏 State。
@@ -66,7 +73,7 @@ Model、Tool、Memory、Failure Policy 和 Event Sink 的 panic 都在 Runtime �
 
 Context Planning 使用同一取消边界。Counter/Planner 失败会终止 Run，因为继续执行会破坏已配置的 Context 保证。`context.prepare.started/prepared` 在 Ready、Overflow、Error 和 Cancellation 路径均保持配对。
 
-发生 Overflow 后，已配置 Compressor 只有一次机会，随后必须重新规划。同 Target Retry 复用压缩视图；Fallback Target 从完整 State 重新开始，并使用自己的 Planner 和可选 Compressor。Compression Error、非法 Decision、取消、压缩不足和 Event Sink 失败全部 Fail-closed，并在终止前产生配对的 `context.compression.started/completed|failed` Operation。
+发生 Overflow 后，已配置 Compressor 只有一次机会，随后必须重新规划。普通同 Target Retry 复用压缩视图；Fallback Target 从完整 State 重新开始，并使用自己的 Planner 和可选 Compressor。显式开启后，未被预检发现的 Provider Context Length 拒绝可对失败 Request View 压缩一次、重新规划，并占用一次 `MaxModelCalls`；第二次拒绝不再压缩。Compression Error、非法 Decision、取消、压缩不足和 Event Sink 失败全部 Fail-closed，并在终止前产生配对的 `context.compression.started/completed|failed` Operation。
 
 ## Event Sink
 

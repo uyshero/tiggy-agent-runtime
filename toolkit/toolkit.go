@@ -1,6 +1,12 @@
 // Package toolkit 负责注册工具，并为每次 Run 生成不可变快照 View。
 //
-// 注册时编译 Input Schema；调用前校验参数。Group 只用于能力投影，不进入 Tool Call 协议。
+// 关键路径：
+//
+//	RegisterWith → 读 Definition → 编译 Input Schema → 写入注册表
+//	Snapshot / SnapshotGroups → 生成 View（Run 期间不变）
+//	View.Call → 校验参数 → Execute → 校验 Result
+//
+// Group 只用于能力投影，不进入 Tool Call 协议名。
 package toolkit
 
 import (
@@ -28,25 +34,26 @@ type argumentValidator interface {
 // registeredTool 保存工具实例、Definition 副本、Schema 校验器与所属 Groups。
 type registeredTool struct {
 	tool       tool.Tool
-	definition model.ToolDefinition
+	definition model.ToolDefinition // 注册时拷贝；Name 已是限定名
 	validator  argumentValidator
 	groups     map[string]struct{}
 }
 
 // Registration 描述一次注册：可选 Namespace 前缀与 Groups 投影标签。
+// 例：Namespace="crm", 原名 lookup → 模型可见名 "crm.lookup"。
 type Registration struct {
 	Tool      tool.Tool
 	Namespace string
 	Groups    []string
 }
 
-// Toolkit 是并发安全的工具注册表。
+// Toolkit 是并发安全的工具注册表；Agent 可复用同一 Toolkit，每次 Run 各自 Snapshot。
 type Toolkit struct {
 	mu    sync.RWMutex
-	tools map[string]registeredTool
+	tools map[string]registeredTool // key = 限定名
 }
 
-// New 构造 Toolkit 并按序注册初始工具。
+// New 构造 Toolkit 并按序注册初始工具；任一注册失败则整体失败。
 func New(values ...tool.Tool) (*Toolkit, error) {
 	kit := &Toolkit{tools: make(map[string]registeredTool, len(values))}
 	for _, value := range values {
@@ -63,6 +70,7 @@ func (t *Toolkit) Register(value tool.Tool) error {
 }
 
 // RegisterWith 读取 Definition、编译 Schema，并以限定名写入注册表。
+// 同名已存在则报错；编译失败拒绝注册（不会留下半条目）。
 func (t *Toolkit) RegisterWith(registration Registration) error {
 	if registration.Tool == nil {
 		return fmt.Errorf("tool is required")
@@ -79,7 +87,7 @@ func (t *Toolkit) RegisterWith(registration Registration) error {
 	if err != nil {
 		return err
 	}
-	definition.Name = name
+	definition.Name = name // 对外只暴露限定名
 	groups, err := normalizeGroups(registration.Groups)
 	if err != nil {
 		return err
@@ -125,9 +133,10 @@ func (t *Toolkit) Groups() []string {
 // View 是一次 Run 持有的不可变注册快照；之后新注册只影响后续 Run。
 type View struct {
 	tools       map[string]registeredTool
-	definitions []model.ToolDefinition
+	definitions []model.ToolDefinition // 按名称排序，供模型请求
 }
 
+// Snapshot 返回全量工具快照；Toolkit 为 nil 时返回空 View。
 func (t *Toolkit) Snapshot() View {
 	if t == nil {
 		return emptyView()
@@ -137,8 +146,8 @@ func (t *Toolkit) Snapshot() View {
 	return snapshot(t.tools, nil)
 }
 
-// SnapshotGroups returns the union of the requested groups. Unknown groups
-// are rejected so configuration typos cannot silently remove capabilities.
+// SnapshotGroups 返回所请求 Group 的并集。
+// 未知 Group 直接报错，避免配置笔误静默丢掉能力。
 func (t *Toolkit) SnapshotGroups(groups ...string) (View, error) {
 	if t == nil {
 		return View{}, fmt.Errorf("toolkit is required")
@@ -166,6 +175,7 @@ func (t *Toolkit) SnapshotGroups(groups ...string) (View, error) {
 	return snapshot(t.tools, requested), nil
 }
 
+// Definitions 返回本快照中工具定义的深拷贝（供模型 Request.Tools）。
 func (v View) Definitions() []model.ToolDefinition {
 	values := make([]model.ToolDefinition, len(v.definitions))
 	for index, definition := range v.definitions {
@@ -174,9 +184,8 @@ func (v View) Definitions() []model.ToolDefinition {
 	return values
 }
 
-// DefinitionDigest fingerprints the immutable model-visible Tool contract in
-// this View. It lets approval continuations reject a different Toolkit before
-// executing a previously approved call.
+// DefinitionDigest 对本 View 中模型可见 Tool 契约做指纹。
+// 审批续跑用它拒绝「挂起后 Toolkit 定义已变」的 Resume。
 func (v View) DefinitionDigest(name string) (string, bool) {
 	entry, exists := v.tools[name]
 	if !exists {
@@ -190,6 +199,12 @@ func (v View) DefinitionDigest(name string) (string, bool) {
 	return "sha256:" + hex.EncodeToString(sum[:]), true
 }
 
+// Call 执行单次工具调用：校验参数 → Execute → 校验 Result。
+//
+// 错误分类：
+//   - 参数/未知工具 → tool.Error（模型可修正）
+//   - Schema 校验器 panic / 工具 panic / 非法 Result → tool.RuntimeError
+//   - 工具返回的 Error / RuntimeError 原样透传
 func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Result, err error) {
 	if err := ctx.Err(); err != nil {
 		return tool.Result{}, err
@@ -198,6 +213,7 @@ func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Resu
 		return tool.Result{}, tool.NewError("invalid_tool_arguments", "The tool arguments are invalid JSON.", false, err)
 	}
 	if strings.TrimSpace(call.ArgumentsError) != "" {
+		// 模型侧已标明参数解析失败（例如非 JSON），不再二次解码。
 		return tool.Result{}, tool.NewError("invalid_tool_arguments", "The tool arguments could not be parsed.", false, errors.New(call.ArgumentsError))
 	}
 	entry, exists := v.tools[call.Name]
@@ -223,6 +239,7 @@ func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Resu
 			}
 		}
 	}()
+	// 传入 Arguments 副本，防止工具改写调用方缓冲。
 	result, err = entry.tool.Execute(ctx, append(json.RawMessage(nil), call.Arguments...))
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return tool.Result{}, ctxErr
@@ -236,6 +253,7 @@ func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Resu
 		if errors.As(err, &safe) {
 			return tool.Result{}, safe
 		}
+		// 未分类 error 一律升为 RuntimeError，避免把内部细节回传模型。
 		return tool.Result{}, &tool.RuntimeError{Code: "tool_execution_failed", Cause: err}
 	}
 	validation := message.ToolResult{CallID: call.ID, Name: call.Name, Content: result.Content, State: result.State}
@@ -247,6 +265,7 @@ func (v View) Call(ctx context.Context, call message.ToolCall) (result tool.Resu
 	return result, nil
 }
 
+// snapshot 按可选 groups 过滤并拷贝定义；groups==nil 表示全量。
 func snapshot(values map[string]registeredTool, groups map[string]struct{}) View {
 	view := View{tools: make(map[string]registeredTool)}
 	for name, entry := range values {

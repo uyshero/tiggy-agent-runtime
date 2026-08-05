@@ -14,7 +14,7 @@ Go 应用 -> import 本模块 -> 在当前进程直接运行 Agent
 
 ## 当前状态
 
-P3 已完成。仓库当前提供与 Provider 无关的协议、有边界的顺序 ReAct Loop、Digest 绑定的 Tool 人工审批暂停与恢复、Toolkit 和内置执行边界、带外部兼容套件的 MCP Transport、显式 Skill 激活、Token Budget Planning、结构安全 Context Compression、有界大型 Tool Result Offload、Scoped Memory 质量契约、只读 Logging/Metrics/OpenTelemetry Observer、版本化且有完整性链接的 Run Recorder，以及确定性 Context/Memory Fault Injection。当前版本仍未达到生产可用状态。
+P3 已完成。仓库当前提供与 Provider 无关的协议、可选 OpenAI-compatible Adapter、有边界的顺序 ReAct Loop、Digest 绑定的 Tool 人工审批暂停与恢复、Toolkit 和内置执行边界、带外部兼容套件的 MCP Transport、显式 Skill 激活、Token Budget Planning、结构安全 Context Compression、有界大型 Tool Result Offload、Scoped Memory 质量契约、只读 Logging/Metrics/OpenTelemetry Observer、版本化且有完整性链接的 Run Recorder，以及确定性故障评测。当前版本仍未达到生产可用状态。
 
 ## Go Module
 
@@ -44,6 +44,8 @@ artifact/ 版本化大型 Tool Result Offload 和 opaque Object Reference
 memory/   Scoped Recall/Observe 协议和有界进程内 Adapter
 observe/  结构化日志、有界指标和可选 OpenTelemetry Adapter
 record/   隐私感知、完整性链接的 Memory/JSONL Run Journal
+provider/openai/ 可选、只依赖标准库的 OpenAI-compatible Model Adapter
+evaluation/ 确定性 Runtime 可靠性与 Compressor 质量报告
 ```
 
 ## 运行示例
@@ -64,7 +66,7 @@ go run ./examples/basic-agent
 make verify
 ```
 
-验证包括格式、依赖边界与许可证检查、`go vet`、单元测试和数据竞争检查。
+验证包括格式、依赖边界与许可证检查、`go vet`、单元测试、数据竞争检查和确定性 Runtime 可靠性基线。只运行该基线可执行 `make eval-reliability`。
 
 发布元数据单独审计，因为其中包含不应阻塞日常开发、且必须由 Owner 决定的事项：
 
@@ -91,12 +93,17 @@ make release-verify RELEASE_VERSION=v0.1.0
 - [MCP Client 语义](./docs/mcp.zh-CN.md)
 - [Skill 语义](./docs/skill.zh-CN.md)
 - [Context Manager 语义](./docs/contextmanager.zh-CN.md)
+- [Context 诊断快照](./docs/context-diagnostics.zh-CN.md)
 - [Artifact Offload 语义](./docs/artifact.zh-CN.md)
 - [Memory Recall 与 Observe 语义](./docs/memory.zh-CN.md)
 - [可观测性语义](./docs/observe.zh-CN.md)
 - [Run Recorder 语义](./docs/record.zh-CN.md)
 - [Context 与 Memory 故障注入](./docs/fault-injection.zh-CN.md)
 - [Agent 测试工具手册](./docs/agenttest.zh-CN.md)
+- [真实 Provider 契约验收](./docs/live-provider.zh-CN.md)
+- [OpenAI-compatible Provider Adapter](./docs/provider-openai.zh-CN.md)
+- [Runtime 可靠性评测](./docs/reliability-evaluation.zh-CN.md)
+- [Compressor 质量评测](./docs/compression-evaluation.zh-CN.md)
 - [内置 Tool 语义](./docs/builtin.zh-CN.md)
 - [提取与迁移计划](./docs/migration.md)
 - [路线图](./docs/roadmap.md)
@@ -115,6 +122,9 @@ make release-verify RELEASE_VERSION=v0.1.0
 - [ADR 0012：只读 Observation Adapter](./docs/adr/0012-observation-adapters.md)
 - [ADR 0013：版本化、完整性链接的 Run Recorder](./docs/adr/0013-run-recorder.md)
 - [ADR 0014：确定性 Context/Memory 故障注入](./docs/adr/0014-deterministic-fault-injection.md)
+- [ADR 0015：有界 Provider Context Length 恢复](./docs/adr/0015-provider-context-length-recovery.md)
+- [ADR 0016：确定性 Compressor 质量评测](./docs/adr/0016-compressor-quality-evaluation.md)
+- [ADR 0017：无正文 Model Context 诊断 Manifest](./docs/adr/0017-model-context-diagnostic-manifest.md)
 - [兼容性变更记录](./CHANGELOG.md)
 
 ## 与 Tiggy Manage Agent 的关系

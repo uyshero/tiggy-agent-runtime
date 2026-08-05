@@ -39,20 +39,21 @@ func ValidateTrace(events []event.Event) error {
 	runID := events[0].RunID
 	ids := make(map[string]event.Type, len(events))
 	type operation struct {
-		typeValue        event.Type
-		callID           string
-		name             string
-		model            model.Identity
-		attempt          int
-		status           string
-		sourceBytes      int64
-		mediaType        string
-		digest           string
-		namespace        string
-		failureMode      string
-		limit            int
-		messageCount     int
-		observationBytes int64
+		typeValue          event.Type
+		callID             string
+		name               string
+		model              model.Identity
+		attempt            int
+		status             string
+		sourceBytes        int64
+		mediaType          string
+		digest             string
+		namespace          string
+		failureMode        string
+		limit              int
+		messageCount       int
+		observationBytes   int64
+		compressionTrigger string
 	}
 	open := make(map[string]operation)
 	completedModels := make(map[string]operation)
@@ -77,7 +78,7 @@ func ValidateTrace(events []event.Event) error {
 			runStarts++
 		case event.ModelCallStarted:
 			payload, err := DecodePayload[event.ModelCallPayload](value)
-			if err != nil || payload.CallID == "" {
+			if err != nil || payload.CallID == "" || (payload.Context != nil && payload.Context.Validate() != nil) {
 				return fmt.Errorf("model start %q has invalid payload", value.ID)
 			}
 			open[value.ID] = operation{
@@ -91,10 +92,17 @@ func ValidateTrace(events []event.Event) error {
 			open[value.ID] = operation{typeValue: value.Type, model: payload.Model}
 		case event.CompressionStarted:
 			payload, err := DecodePayload[event.CompressionPayload](value)
-			if err != nil || payload.Model.Validate() != nil || payload.BeforeInputTokens <= 0 || payload.TargetInputTokens <= 0 || payload.OverflowTokens <= 0 || payload.CandidateGroups < 0 {
+			if err != nil || payload.Model.Validate() != nil || payload.BeforeInputTokens <= 0 || payload.TargetInputTokens <= 0 || !validCompressionStart(payload) {
 				return fmt.Errorf("compression start %q has invalid payload", value.ID)
 			}
-			open[value.ID] = operation{typeValue: value.Type, model: payload.Model}
+			trigger := effectiveCompressionTrigger(payload.Trigger)
+			if trigger == "provider_context_length" {
+				completed := completedModels[value.ParentID]
+				if completed.model != payload.Model || completed.status != "failed" {
+					return fmt.Errorf("Provider recovery compression %q has no matching failed model call", value.ID)
+				}
+			}
+			open[value.ID] = operation{typeValue: value.Type, model: payload.Model, compressionTrigger: trigger}
 		case event.ToolCallStarted:
 			payload, err := DecodePayload[event.ToolCallPayload](value)
 			if err != nil || payload.CallID == "" {
@@ -184,7 +192,7 @@ func ValidateTrace(events []event.Event) error {
 		case event.CompressionCompleted, event.CompressionFailed:
 			started, exists := open[value.ParentID]
 			payload, err := DecodePayload[event.CompressionPayload](value)
-			if !exists || started.typeValue != event.CompressionStarted || err != nil || payload.Model != started.model || !validCompressionStatus(value.Type, payload) {
+			if !exists || started.typeValue != event.CompressionStarted || err != nil || payload.Model != started.model || effectiveCompressionTrigger(payload.Trigger) != started.compressionTrigger || !validCompressionStatus(value.Type, payload) {
 				return fmt.Errorf("compression outcome %q has no matching start", value.ID)
 			}
 			delete(open, value.ParentID)
@@ -294,6 +302,29 @@ func validCompressionStatus(eventType event.Type, payload event.CompressionPaylo
 	default:
 		return false
 	}
+}
+
+func validCompressionStart(payload event.CompressionPayload) bool {
+	if payload.CandidateGroups < 0 {
+		return false
+	}
+	switch effectiveCompressionTrigger(payload.Trigger) {
+	case "budget_overflow":
+		return payload.OverflowTokens > 0
+	case "provider_context_length":
+		return payload.OverflowTokens == 0
+	default:
+		return false
+	}
+}
+
+// Compression events recorded before Trigger was introduced represent the
+// original budget-overflow path. Unknown non-empty values remain invalid.
+func effectiveCompressionTrigger(value string) string {
+	if value == "" {
+		return "budget_overflow"
+	}
+	return value
 }
 
 func validContextPrepareStatus(status string) bool {

@@ -10,7 +10,7 @@ Token planning can measure an exact input deficit, but removing arbitrary Messag
 ## Decision
 
 1. Compression is optional, model-specific, and requires a Context Planner.
-2. It runs only after a validated overflow Plan and receives owned copies through `contextmanager.Compressor`.
+2. It runs after a validated overflow Plan, or through the explicit bounded Provider context-length recovery in ADR 0015, and receives owned copies through `contextmanager.Compressor`.
 3. Core groups User turns in order and merges boundaries crossed by Tool Call/Result relationships.
 4. System groups, the latest turn, and groups containing unresolved Tool Calls are protected. Only a contiguous inactive prefix is eligible.
 5. A `CompressionDecision` selects a positive number of eligible groups and returns summary text plus a required strategy name/version. It cannot construct the final Message list.
@@ -18,7 +18,7 @@ Token planning can measure an exact input deficit, but removing arbitrary Messag
 7. The compressed view is planned again exactly once. It reaches the provider only when the second Plan fits.
 8. Strategy/version, source coverage, before/after tokens, summary ID, and fallback are emitted without prompt or summary bodies.
 9. Errors, panics, invalid Decisions, cancellation, no eligible history, and insufficient reduction fail closed. Core does not silently truncate a tail or recursively compress.
-10. Same-target retries reuse the unchanged compressed view. A Fallback target starts from full State and applies its own Planner and optional Compressor.
+10. Ordinary same-target retries reuse the unchanged compressed view. One policy-authorized Provider context-length recovery may compress that failed view once; a Fallback target starts from full State and applies its own Planner and optional Compressor.
 
 ## Consequences
 
@@ -34,4 +34,4 @@ Token planning can measure an exact input deficit, but removing arbitrary Messag
 - **Let the Compressor return arbitrary Messages:** makes ordering and protected-history guarantees unverifiable.
 - **Rewrite Agent State with the summary:** loses source history and weakens application-managed continuation.
 - **Retry compression until it fits:** creates an implicit unbounded loop and compounds summary loss.
-- **Compress only after a provider context-length error:** wastes a provider call and loses the measured preflight guarantee.
+- **Use Provider context-length errors instead of preflight:** wastes calls and loses the measured preflight guarantee. ADR 0015 retains preflight and permits only one explicit recovery for residual mismatch.

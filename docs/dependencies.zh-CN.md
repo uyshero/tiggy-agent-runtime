@@ -34,6 +34,8 @@ Model Provider、MCP、OpenTelemetry、Vector Store、Remote FileSystem 和隔�
 
 `command/local` 是仅使用标准库的本地进程 Adapter，只依赖 `command`、`safespace` 和 `os/exec`，不增加 Go Module 依赖。应用必须显式 Import 它；`builtin.bash` 不会传递引入本地执行能力。
 
+`provider/openai` 是只使用标准库的 OpenAI-compatible Chat Completions Adapter，只依赖 `message`、`model` 和 `net/http`。应用必须显式 Import，Core Package 不依赖该包；HTTP Client、Credential、Timeout、Transport 和连接生命周期由应用注入并拥有。
+
 `approval` 只使用 JSON 校验、SHA-256、标准库 Value Copy 和 Panic Containment，不包含 Identity Provider、数据库、通知 Client、Scheduler 或 UI 依赖。
 
 `skill` 使用标准库严格 JSON 解析和仅依赖标准库的 `safespace.Reader` 契约。Skill 发现与激活不增加 Go Module、YAML Parser、Package Manager 或 Node.js 依赖。详见 [ADR 0005](./adr/0005-strict-skill-manifest.md)。

@@ -15,7 +15,7 @@ The runtime also needs provider fallback without depending on an Enterprise rout
 2. Recovery applies only to Model calls. Tools are never retried automatically.
 3. `ModelFailurePolicy` returns one typed action: `fail`, `retry`, or `fallback`.
 4. The runtime, not the policy, enforces `MaxModelCalls`, Context cancellation, event ordering, and target availability.
-5. `TransientModelFailurePolicy` acts only on `ProviderError` values explicitly marked retryable.
+5. `TransientModelFailurePolicy` retries ordinary failures only when `ProviderError.Retryable=true`; its separate opt-in context-length action is defined by ADR 0015.
 6. A retry uses the same projected State and Model Target with a new Call ID.
 7. A fallback moves forward through an ordered, explicitly configured list of Model Targets. It never discovers or selects Enterprise resources.
 8. Every physical attempt counts toward `MaxModelCalls`; retries do not increment logical Agent iterations.

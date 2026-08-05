@@ -26,10 +26,14 @@ type BatchResult struct {
 	Err    error
 }
 
-// CallBatch 按「顺序屏障」分阶段执行：sequential 工具独占且不与其它调用重叠；
-// 连续声明为 safe 的工具可在 MaxConcurrency 内并行。结果始终按输入顺序返回。
+// CallBatch 按「顺序屏障」分阶段执行：
+//
+//	sequential（默认）→ 独占，不与其它调用重叠
+//	连续 safe → 在 MaxConcurrency 内并行
+//
+// 结果始终按输入 Call 顺序写入返回切片。
 func (v View) CallBatch(ctx context.Context, calls []message.ToolCall, options BatchOptions) []BatchResult {
-	calls = cloneToolCalls(calls)
+	calls = cloneToolCalls(calls) // 启动 worker 前深拷贝，避免并发改 Arguments
 	results := make([]BatchResult, len(calls))
 	maximum := options.MaxConcurrency
 	if maximum <= 0 {
@@ -40,10 +44,12 @@ func (v View) CallBatch(ctx context.Context, calls []message.ToolCall, options B
 	}
 	for index := 0; index < len(calls); {
 		if v.concurrencyClass(calls[index].Name) != model.ToolConcurrencySafe {
+			// 顺序屏障：单独执行，再看下一条
 			results[index] = v.callForBatch(ctx, calls[index])
 			index++
 			continue
 		}
+		// 收齐连续的 safe 调用，作为一段并发窗口
 		end := index + 1
 		for end < len(calls) && v.concurrencyClass(calls[end].Name) == model.ToolConcurrencySafe {
 			end++

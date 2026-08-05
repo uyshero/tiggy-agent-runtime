@@ -19,21 +19,21 @@
 
 ## 当前阻塞项
 
-`v0.1.0` 候选当前仍不得公开发布，剩余阻塞项是：
+仓库的 `v0.1.0` 发布提交已有本地 Tag，当前 `HEAD` 比该基线领先一个 `Unreleased` 开发提交。审计无法证明该 Tag 已公开可用，当前 `Unreleased` 提交也还不能视为发布候选。剩余阻塞项是：
 
-- 候选改动尚未形成已审查、干净的 Release Commit，也没有 `v0.1.0` Tag；
+- 当前 `Unreleased` 提交尚未完成审查，也未确定下一个发布版本；
 - 公开 Module 路径 `github.com/uyshero/tiggy-agent-runtime` 的可用性和所有权仍需 Owner 确认；
 - `security@tiggy.cloud` 的投递与监控需要完成实际运维确认；
-- 有权限的 Owner 尚未批准真正的公开发布操作。
+- 有权限的 Owner 尚未批准下一次公开发布操作。
 
-Apache-2.0、私密安全报告地址和 `v0.1.0` 候选日期已经记录。不得通过虚构归属、运维验证或发布授权来消除剩余事项。
+Apache-2.0、私密安全报告地址和 `v0.1.0` 基线日期已经记录。不得通过虚构归属、运维验证或发布授权来消除剩余事项。
 
 ## Owner 必须决策
 
 已经记录的决定：
 
 - 项目许可证：Apache-2.0；
-- 首发候选：`v0.1.0`，日期为 2026-08-04；
+- 首个 Tag 基线：`v0.1.0`，日期为 2026-08-04；
 - 安全策略：支持最新 `0.1.x`，私密报告发送到 `security@tiggy.cloud`。
 
 公开发布前，仓库 Owner 仍需记录：
@@ -60,15 +60,16 @@ make release-verify RELEASE_VERSION=v0.1.0
 
 Changelog 标题格式为 `## [0.1.0] - YYYY-MM-DD`。命令不会创建 Commit 或 Tag，也不会检查公开仓库是否可访问。审计要求候选版本已经提交且工作区清洁，因此它在尚未提交的提取工作区中失败是预期行为。
 
-## 首次发布 Checklist
+## 当前发布 Checklist
 
 - [ ] 已记录 Owner 和仓库归属；
 - [x] Apache-2.0 已审批并添加 `LICENSE`；
 - [x] 已审核依赖许可证，并在 CI 执行 Allow/Deny Policy；
 - [ ] 已确认公开 Module Path 的所有权和仓库可用性；
 - [x] `SECURITY.md` 已包含所需的支持版本、报告方式和 Contact Contract；
-- [ ] 初始历史已审查，候选版本工作区清洁；
-- [x] 候选变更已记录在 `## [0.1.0] - 2026-08-04`；
+- [x] 本地 `v0.1.0` Tag 指向对应的发布提交；
+- [ ] 当前 `Unreleased` 提交已审查并确定下一个发布版本；
+- [x] `v0.1.0` 基线已记录在 `## [0.1.0] - 2026-08-04`；
 - [ ] Tag Commit 上的 `make release-verify RELEASE_VERSION=vX.Y.Z` 通过；
 - [ ] 固定参考 Server 版本的定时 MCP Compatibility 检查为绿色；
 - [ ] Release Notes 说明 pre-v1 兼容规则、支持的 Go 版本、已知限制和回滚/撤回 Owner；

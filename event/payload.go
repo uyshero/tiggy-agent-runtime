@@ -1,6 +1,8 @@
 package event
 
 import (
+	"fmt"
+
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
 
@@ -41,13 +43,77 @@ type ErrorPayload struct {
 
 // ModelCallPayload 是模型调用开始/完成事件的公共字段。
 type ModelCallPayload struct {
-	CallID     string         `json:"call_id"`
-	Model      model.Identity `json:"model"`
-	Attempt    int            `json:"attempt"`
-	Status     string         `json:"status,omitempty"`
-	StopReason string         `json:"stop_reason,omitempty"`
-	Usage      model.Usage    `json:"usage,omitempty"`
-	Error      *ErrorPayload  `json:"error,omitempty"`
+	CallID     string               `json:"call_id"`
+	Model      model.Identity       `json:"model"`
+	Attempt    int                  `json:"attempt"`
+	Context    *ModelContextPayload `json:"context,omitempty"`
+	Status     string               `json:"status,omitempty"`
+	StopReason string               `json:"stop_reason,omitempty"`
+	Usage      model.Usage          `json:"usage,omitempty"`
+	Error      *ErrorPayload        `json:"error,omitempty"`
+}
+
+// ModelContextPayload is a bounded, content-free manifest of the exact
+// Request view associated with model.call.started.
+type ModelContextPayload struct {
+	ProjectedMessageCount  int   `json:"projected_message_count"`
+	RequestMessageCount    int   `json:"request_message_count"`
+	SystemMessageCount     int   `json:"system_message_count"`
+	UserMessageCount       int   `json:"user_message_count"`
+	AssistantMessageCount  int   `json:"assistant_message_count"`
+	ToolMessageCount       int   `json:"tool_message_count"`
+	PublicMessageCount     int   `json:"public_message_count"`
+	InternalMessageCount   int   `json:"internal_message_count"`
+	RecalledMemoryMessages int   `json:"recalled_memory_messages"`
+	CompressionSummaries   int   `json:"compression_summaries"`
+	TextBlocks             int   `json:"text_blocks"`
+	TextBytes              int64 `json:"text_bytes"`
+	ThinkingBlocks         int   `json:"thinking_blocks"`
+	ThinkingBytes          int64 `json:"thinking_bytes"`
+	ImageBlocks            int   `json:"image_blocks"`
+	ToolCallBlocks         int   `json:"tool_call_blocks"`
+	ToolArgumentBytes      int64 `json:"tool_argument_bytes"`
+	ToolResultBlocks       int   `json:"tool_result_blocks"`
+	ArtifactBlocks         int   `json:"artifact_blocks"`
+	ToolDefinitionCount    int   `json:"tool_definition_count"`
+	ToolDefinitionBytes    int64 `json:"tool_definition_bytes"`
+}
+
+func (p ModelContextPayload) Validate() error {
+	counts := []int{
+		p.ProjectedMessageCount, p.RequestMessageCount, p.SystemMessageCount, p.UserMessageCount,
+		p.AssistantMessageCount, p.ToolMessageCount, p.PublicMessageCount, p.InternalMessageCount,
+		p.RecalledMemoryMessages, p.CompressionSummaries, p.TextBlocks, p.ThinkingBlocks,
+		p.ImageBlocks, p.ToolCallBlocks, p.ToolResultBlocks, p.ArtifactBlocks, p.ToolDefinitionCount,
+	}
+	for _, count := range counts {
+		if count < 0 {
+			return fmt.Errorf("model context counts cannot be negative")
+		}
+	}
+	if p.ProjectedMessageCount < p.RequestMessageCount || p.RequestMessageCount <= 0 {
+		return fmt.Errorf("model context projected/request message counts are inconsistent")
+	}
+	if p.SystemMessageCount+p.UserMessageCount+p.AssistantMessageCount+p.ToolMessageCount != p.RequestMessageCount {
+		return fmt.Errorf("model context role counts are inconsistent")
+	}
+	if p.PublicMessageCount+p.InternalMessageCount != p.RequestMessageCount {
+		return fmt.Errorf("model context visibility counts are inconsistent")
+	}
+	if p.RecalledMemoryMessages+p.CompressionSummaries > p.SystemMessageCount {
+		return fmt.Errorf("model context projection counts exceed System Messages")
+	}
+	blockCount := p.TextBlocks + p.ThinkingBlocks + p.ImageBlocks + p.ToolCallBlocks + p.ToolResultBlocks + p.ArtifactBlocks
+	if blockCount < p.RequestMessageCount {
+		return fmt.Errorf("model context Content block counts are inconsistent")
+	}
+	if p.TextBytes < 0 || p.ThinkingBytes < 0 || p.ToolArgumentBytes < 0 || p.ToolDefinitionBytes < 0 {
+		return fmt.Errorf("model context byte counts cannot be negative")
+	}
+	if (p.ToolDefinitionCount == 0) != (p.ToolDefinitionBytes == 0) {
+		return fmt.Errorf("model context Tool Definition counts are inconsistent")
+	}
+	return nil
 }
 
 type ModelDeltaPayload struct {
@@ -75,6 +141,7 @@ type ContextPreparePayload struct {
 
 type CompressionPayload struct {
 	Model             model.Identity `json:"model"`
+	Trigger           string         `json:"trigger,omitempty"`
 	Status            string         `json:"status,omitempty"`
 	StrategyName      string         `json:"strategy_name,omitempty"`
 	StrategyVersion   string         `json:"strategy_version,omitempty"`

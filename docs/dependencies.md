@@ -34,6 +34,8 @@ Provider, MCP, OpenTelemetry, vector-store, remote FileSystem, and isolated Comm
 
 `command/local` is the standard-library local-process adapter. It depends only on `command`, `safespace`, and `os/exec`; it adds no module dependency. Importing it is an explicit application choice, not a transitive requirement of `builtin.bash`.
 
+`provider/openai` is the standard-library OpenAI-compatible Chat Completions Adapter. It depends only on `message`, `model`, and `net/http`; importing it is an explicit application choice and Core packages do not depend on it. Applications inject and own the HTTP Client, credentials, timeout, transport, and connection lifecycle.
+
 `approval` uses JSON validation, SHA-256, copied standard-library values, and
 panic containment only. It does not include an identity provider, database,
 notification client, scheduler, or UI dependency.

@@ -122,6 +122,18 @@ func logAttributes(value event.Event) ([]slog.Attr, error) {
 			slog.String("operation.status", payload.Status),
 			slog.String("model.stop_reason", payload.StopReason),
 		}
+		if payload.Context != nil {
+			result = append(result,
+				slog.Int("context.projected_message_count", payload.Context.ProjectedMessageCount),
+				slog.Int("context.request_message_count", payload.Context.RequestMessageCount),
+				slog.Int("context.recalled_memory_messages", payload.Context.RecalledMemoryMessages),
+				slog.Int("context.compression_summaries", payload.Context.CompressionSummaries),
+				slog.Int64("context.text_bytes", payload.Context.TextBytes),
+				slog.Int("context.artifact_blocks", payload.Context.ArtifactBlocks),
+				slog.Int("context.tool_definition_count", payload.Context.ToolDefinitionCount),
+				slog.Int64("context.tool_definition_bytes", payload.Context.ToolDefinitionBytes),
+			)
+		}
 		return appendErrorAttrs(result, payload.Error), nil
 	case event.ModelCallDelta:
 		payload, err := decode[event.ModelDeltaPayload](value)

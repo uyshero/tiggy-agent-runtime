@@ -78,6 +78,8 @@ This captures the Tiggy-owned request delivered to a Provider Adapter. It cannot
 
 Full context can contain prompts, Tool Results, or recalled data. Print it only in controlled tests; do not copy this pattern into production logs.
 
+For production-safe shape diagnostics, decode the optional `ModelCallPayload.Context` manifest from `model.call.started`. It contains fixed aggregate counts and byte sizes but no Message IDs or bodies. See [Context diagnostics](./context-diagnostics.md).
+
 ## Test Doubles
 
 | API | Use |

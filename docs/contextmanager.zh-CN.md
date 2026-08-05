@@ -41,7 +41,7 @@ utilization     = input / available_input，单位 Basis Point
 
 默认压力阈值为 80% Warning 和 95% Critical。Pressure 只用于决策与观测，不会自动删除 Context。任意正数 Overflow 都返回 `PressureOverflow` 和 `Fits=false`。
 
-Agent 使用 `Limits.MaxOutputTokensPerCall` 作为 Output Reserve。一个 Generation Cycle 内，每个 Model Target 只规划一次：同 Target Retry 复用未变 Plan，Fallback 使用自己的 Planner/Window，下一个 ReAct 迭代因 Tool Result 改变上下文而重新规划。启用 Planning 时，每个 Fallback 都必须配置自己的 Planner。
+Agent 使用 `Limits.MaxOutputTokensPerCall` 作为 Output Reserve。一个 Generation Cycle 内，每个 Model Target 通常只规划一次：普通同 Target Retry 复用未变 Plan，Fallback 使用自己的 Planner/Window，下一个 ReAct 迭代因 Tool Result 改变上下文而重新规划。Policy 允许的 Provider Context Length 恢复是有界例外：压缩恢复视图会在重试前规划一次。启用 Planning 时，每个 Fallback 都必须配置自己的 Planner。
 
 ## Runtime 行为
 
@@ -56,13 +56,17 @@ Completed Event 记录 Model、Count Source、Window、Input、Output Reserve、
 
 ## 结构安全 Compression
 
-每个 Model 可在 Context Planner 旁绑定 `contextmanager.Compressor`。只有已校验 Plan 发生 Overflow 后才运行 Compression。Core 构造有序的非活跃历史组，并把独立副本交给 Compressor：
+每个 Model 可在 Context Planner 旁绑定 `contextmanager.Compressor`。Compression 通常在已校验 Plan 发生 Overflow 后运行；当 Provider 拒绝一个已通过本地预检的 Request 且 Policy 明确允许时，也可最多运行一次。Core 构造有序的非活跃历史组，并把独立副本交给 Compressor：
 
 ```go
 type Compressor interface {
     Compress(context.Context, contextmanager.CompressionRequest) (contextmanager.CompressionDecision, error)
 }
 ```
+
+`CompressionRequest.Trigger` 为 `budget_overflow` 或 `provider_context_length`。后者保留真实的 Fits Plan，因此 Overflow 记录为 0；它表示 Provider 拒绝了本地预检接受的 Request，不表示 Core 测得了虚假缺口。
+
+为保持兼容，旧版 Compression Request 或 Event 缺失 Trigger 时，只按原有的 `budget_overflow` 路径解释。显式的 `provider_context_length` Event 仍必须以匹配的失败 Model Call 为父事件。
 
 Decision 提供 Strategy Name/Version、从第一个 Eligible Group 开始覆盖的正数组数，以及摘要文本，不提供最终 Message List。Core 通过 `ApplyCompression` 用一条 Internal System Summary 替换这些组，并在 Metadata 中写入来源 Message ID。因此 Compressor 不能重排受保护消息，也不能拆分语义组。
 
@@ -74,7 +78,7 @@ Decision 提供 Strategy Name/Version、从第一个 Eligible Group 开始覆盖
 - 只有连续的非活跃前缀可压缩；
 - 完整 `Agent.State` 永不改写，只有下一次 Provider Request 使用摘要视图。
 
-一次压缩后，Agent 必须重新规划。结果 Fit 才进入 `model.call.started`；压缩不足返回 `limit/context_overflow`，不调用 Provider。Compressor error/panic 返回 `internal/context_compression_failed`，非法 Decision 返回 `internal/invalid_compression_result`，取消返回 `canceled/context_compression_canceled`。没有 Eligible Group 时返回 `limit/context_compression_unavailable`。
+一次压缩后，Agent 必须重新规划。Budget Compression 结果 Fit 才进入 `model.call.started`；Provider Recovery 结果 Fit 则发出 `retry.scheduled`，用新 Call ID 执行一次同 Target 重试。压缩不足返回 `limit/context_overflow`，不再调用 Provider。Compressor error/panic 返回 `internal/context_compression_failed`，非法 Decision 返回 `internal/invalid_compression_result`，取消返回 `canceled/context_compression_canceled`。没有 Eligible Group 时返回 `limit/context_compression_unavailable`。
 
 ```text
 context.compression.started
@@ -92,6 +96,8 @@ Outcome 记录 Model、压缩前/后/目标 Input Token、Overflow、Strategy、
 
 Planner Request/Result 都是复制值。`TokenPlanner` 不可变；注入 Counter 并发安全时，Planner 也并发安全。Context 取消会传播，但 Core 无法强制抢占忽略 Context 的 Counter。
 
-本阶段不提供 Model-backed Summarizer、Provider Context-length Retry、分类 Token 归因或 Prompt Cache 决策。调用外部模型的 Compressor 自己拥有该调用和资源/成本报告；当前 Core 契约不会把它计入 Agent `Usage` 或 `MaxModelCalls`。
+Core 不提供 Model-backed Summarizer、分类 Token 归因或 Prompt Cache 决策。Provider Context Length 恢复默认关闭，必须同时配置 `TransientModelFailurePolicy.EnableContextRecovery`、Planner 和 Compressor。Runtime 对每个 Model Target 最多允许一次，并把重试的 Provider Request 计入 `MaxModelCalls`。调用外部模型的 Compressor 自己拥有该调用和资源/成本报告；当前 Core 契约不会把 Compressor 自身工作计入 Agent `Usage` 或 `MaxModelCalls`。
 
 大型 Tool Result Artifact Offload 已作为独立投影前边界实现，详见 [Artifact Offload 语义](./artifact.zh-CN.md)。
+
+每次物理调用最终使用的无正文 Request 组成可从 `model.call.started.context` 获取，详见 [Context 诊断快照](./context-diagnostics.zh-CN.md)。

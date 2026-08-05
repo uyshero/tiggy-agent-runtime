@@ -27,6 +27,8 @@ The digest chain is an integrity checksum, not authentication or non-repudiation
 
 `SafeSanitizer` is the default. It preserves reviewed lifecycle payloads but removes Model Delta text, reasoning, Tool-call fragments, and Provider Error bodies. It removes the entire payload of Tool Delta and unknown future Event types until their privacy contract is reviewed. Each changed Entry sets `payload_redacted=true`.
 
+The optional fixed-size `model.call.started.context` manifest is reviewed metadata and is retained. It contains only counts and aggregate byte sizes, never Request bodies or Message/Memory/Artifact identifiers. See [Context diagnostics](./context-diagnostics.md).
+
 `FullSanitizer` must be selected explicitly and retains every payload byte. The caller then owns classification, user consent, encryption, access control, retention, deletion, and incident exposure. A custom Sanitizer may change only Payload; Recorder rejects changes to Event protocol, IDs, type, sequence, parent, Run ID, or timestamp. Sanitizer errors and panics are contained as strict Sink errors.
 
 ## Bounds and Concurrency

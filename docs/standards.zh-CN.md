@@ -57,7 +57,9 @@
 - 未完成 Tool Call 不能被压缩；
 - Compression 记录来源范围、前后 Token、策略版本和 Fallback；
 - Compression 失败不能静默删除上下文；
-- Context Length 错误默认最多触发一次受策略控制的压缩重试。
+- 显式启用后，每个 Model Target 的 Context Length Provider 错误最多触发一次受策略控制的压缩重试。
+- 生产 Compressor 应通过 `evaluation/compression` 建立确定性的来源绑定事实、结构、Provenance、摘要大小和压缩后预算 Fixture。
+- 新 Runtime 的每次 Model Call 都记录一份固定大小、无正文的最终 Context Manifest；旧 Protocol V1 Event 可以缺失它。
 
 ## Memory
 

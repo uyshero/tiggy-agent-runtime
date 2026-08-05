@@ -12,7 +12,7 @@
 
 Toolkit、Memory、Context Planner、MCP、Skills、Observer 和 Recorder 都是按需增加的能力。
 
-当前要求 Go 1.25.12 或更高版本。项目采用 Apache-2.0 许可证，在 Owner 批准并发布 Tag 前仍处于预发布阶段。
+当前要求 Go 1.25.12 或更高版本。项目采用 Apache-2.0 许可证，仓库已有本地 `v0.1.0` 发布基线，但仍处于 pre-v1 阶段；该 Tag 和本文档都不代表生产就绪承诺。
 
 ## 1. 先运行离线示例
 
@@ -63,6 +63,18 @@ type Model interface {
 }
 ```
 
+OpenAI-compatible Chat Completions 端点可以直接使用可选、只依赖标准库的 Adapter：
+
+```go
+provider, err := openai.New(openai.Config{
+    BaseURL: "https://provider.example/v1",
+    APIKey:  os.Getenv("MODEL_API_KEY"),
+    Client:  &http.Client{Timeout: 90 * time.Second},
+})
+```
+
+Tool Mapping、Streaming、Parameter、Ownership 和 Failure 语义见 [OpenAI-compatible Provider Adapter](./provider-openai.zh-CN.md)。其他 Provider 仍实现同一个小型 `model.Model` 契约。
+
 Adapter 的工作顺序通常是：
 
 1. 从 Adapter 自己的配置读取 Credential 和 HTTP Client；
@@ -98,7 +110,7 @@ func (p *Provider) Generate(
 }
 ```
 
-这是 Adapter 结构说明，不是可直接运行的内置 Provider。Core 当前不绑定 OpenAI、Anthropic 或其他厂商 SDK。
+该骨架用于自定义 Adapter。Core 仍保持 Provider-neutral：`agent` 和 `model` 不依赖可选 OpenAI-compatible Package 或任何厂商 SDK。
 
 `model.Identity` 只记录用于诊断和路由的 Provider/Model/Revision，不得放入 Credential。Adapter 也不能把原始 Provider Error Body 直接放入模型可见错误、Event 或默认日志。
 
@@ -366,9 +378,13 @@ if err != nil {
 }
 
 config.ContextPlanner = planner
+config.ContextCompressor = compressor
+config.FailurePolicy = agent.TransientModelFailurePolicy{
+    EnableContextRecovery: true,
+}
 ```
 
-Core 不根据 Model Name 猜测 Tokenizer 或 Context Window。发生 Overflow 时，没有 Compressor 会在 Provider Call 前 Fail-closed；配置 Compressor 后，Runtime 只允许它摘要可压缩的历史语义组，并保留完整 State。
+Core 不根据 Model Name 猜测 Tokenizer 或 Context Window。发生 Overflow 时，没有 Compressor 会在 Provider Call 前 Fail-closed；配置 Compressor 后，Runtime 只允许它摘要可压缩的历史语义组。`EnableContextRecovery` 独立允许一次“本地 Plan Fits，但 Provider 仍报 Context Length”的压缩重试；默认关闭，占用 `MaxModelCalls`，且始终保留完整 State。
 
 Compressor 通常可能再次调用模型，因此由应用负责它的 Credential、成本、取消和并发安全。详见 [Context Manager 语义](./contextmanager.zh-CN.md)。
 

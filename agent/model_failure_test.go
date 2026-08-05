@@ -98,6 +98,31 @@ func TestNonRetryableFailureDoesNotUseFallback(t *testing.T) {
 	assertTerminalInvariants(t, result)
 }
 
+func TestContextLengthRecoveryPolicyIsExplicitAndSingleUse(t *testing.T) {
+	t.Parallel()
+
+	failure := agent.ModelFailure{
+		RemainingCalls: 2, CanCompress: true,
+		Error: &model.ProviderError{Class: model.ErrorContextLength},
+	}
+	if decision := (agent.TransientModelFailurePolicy{}).Decide(failure); decision.Action != agent.ModelFailureFail {
+		t.Fatalf("disabled recovery decision = %#v", decision)
+	}
+	policy := agent.TransientModelFailurePolicy{EnableContextRecovery: true}
+	if decision := policy.Decide(failure); decision.Action != agent.ModelFailureCompressRetry || decision.Reason != "context_length_recovery" {
+		t.Fatalf("enabled recovery decision = %#v", decision)
+	}
+	failure.ContextRecoveryAttempted = true
+	if decision := policy.Decide(failure); decision.Action != agent.ModelFailureFail {
+		t.Fatalf("repeated recovery decision = %#v", decision)
+	}
+	failure.ContextRecoveryAttempted = false
+	failure.CanCompress = false
+	if decision := policy.Decide(failure); decision.Action != agent.ModelFailureFail {
+		t.Fatalf("unavailable recovery decision = %#v", decision)
+	}
+}
+
 func TestCancellationInterruptsRetryBackoff(t *testing.T) {
 	t.Parallel()
 
@@ -139,6 +164,37 @@ func TestModelFailurePolicyPanicIsContained(t *testing.T) {
 	assertTerminalInvariants(t, result)
 }
 
+func TestContextRecoveryPolicyCannotDelayCompression(t *testing.T) {
+	t.Parallel()
+
+	provider := agenttest.NewScriptedModel(agenttest.ModelStep{Err: &model.ProviderError{
+		Class: model.ErrorContextLength, SafeDetail: "context too long",
+	}})
+	limits := agent.DefaultLimits()
+	limits.MaxOutputTokensPerCall = 100
+	kit, err := toolkit.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := agent.New(agent.Config{
+		Name: "delayed-context-recovery", Model: provider,
+		ModelIdentity:     model.Identity{Provider: "test", Model: "primary"},
+		ContextPlanner:    messageCountPlanner(t, func(int) int64 { return 400 }),
+		ContextCompressor: validCompressor(), FailurePolicy: delayedContextRecoveryPolicy{},
+		Toolkit: kit, Limits: limits, IDs: agenttest.SequentialIDs(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := value.Continue(context.Background(), compressionPreviousState(), userMessage("hello"), nil)
+	assertRunError(t, err, agent.ErrorInternal, "model_failure_policy_failed")
+	if len(provider.Calls()) != 1 || countEventType(result.Events, event.CompressionStarted) != 0 || countEventType(result.Events, event.RetryScheduled) != 0 {
+		t.Fatalf("policy side effects: calls=%d events=%#v", len(provider.Calls()), agenttest.EventTypes(result.Events))
+	}
+	assertTerminalInvariants(t, result)
+}
+
 func TestFallbackRequiresPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -163,6 +219,14 @@ type panicFailurePolicy struct{}
 
 func (panicFailurePolicy) Decide(agent.ModelFailure) agent.ModelFailureDecision {
 	panic("policy boom")
+}
+
+type delayedContextRecoveryPolicy struct{}
+
+func (delayedContextRecoveryPolicy) Decide(agent.ModelFailure) agent.ModelFailureDecision {
+	return agent.ModelFailureDecision{
+		Action: agent.ModelFailureCompressRetry, Delay: time.Millisecond, Reason: "invalid_delayed_recovery",
+	}
 }
 
 func newPolicyAgent(

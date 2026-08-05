@@ -52,6 +52,39 @@ func TestLogSinkRejectsNilLogger(t *testing.T) {
 	}
 }
 
+func TestLogSinkEmitsContentFreeModelContextSnapshot(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	sink, err := LogSink(logger, LogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := testEvent(t, "run_context", "evt_context", event.ModelCallStarted, 1, time.Now(), "", event.ModelCallPayload{
+		CallID: "call_context", Model: model.Identity{Provider: "test", Model: "model"}, Attempt: 1,
+		Context: &event.ModelContextPayload{
+			ProjectedMessageCount: 3, RequestMessageCount: 2,
+			SystemMessageCount: 1, UserMessageCount: 1,
+			PublicMessageCount: 1, InternalMessageCount: 1,
+			CompressionSummaries: 1, TextBlocks: 2, TextBytes: 123,
+			ToolDefinitionCount: 1, ToolDefinitionBytes: 456,
+		},
+	})
+	if err := sink(value); err != nil {
+		t.Fatal(err)
+	}
+	logged := output.String()
+	for _, expected := range []string{
+		`"context.projected_message_count":3`, `"context.request_message_count":2`,
+		`"context.compression_summaries":1`, `"context.text_bytes":123`, `"context.tool_definition_bytes":456`,
+	} {
+		if !strings.Contains(logged, expected) {
+			t.Fatalf("log missing %s: %s", expected, logged)
+		}
+	}
+}
+
 func TestObserversIgnoreUnknownEventPayloads(t *testing.T) {
 	t.Parallel()
 

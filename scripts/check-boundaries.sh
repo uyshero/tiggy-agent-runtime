@@ -25,7 +25,7 @@ if find . -type f \( -name '*.sql' -o -name 'openapi.yaml' -o -name 'openapi.yml
   exit 1
 fi
 
-protocol_dependencies=$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./message ./model ./event ./permission ./safespace ./skill ./contextmanager ./artifact ./memory ./command/...)
+protocol_dependencies=$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./message ./model ./event ./permission ./safespace ./skill ./contextmanager ./artifact ./memory ./command/... ./provider/openai)
 for dependency in $protocol_dependencies; do
   case "$dependency" in
     github.com/uyshero/tiggy-agent-runtime/*) ;;

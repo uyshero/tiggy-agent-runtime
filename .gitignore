@@ -1,6 +1,7 @@
 /.gocache/
 /bin/
 /coverage/
+/reports/
 *.out
 *.prof
 .DS_Store

@@ -36,6 +36,9 @@ observe/otel
 record
   -> event、model 和 Go 标准库
 
+provider/openai
+  -> message、model、net/http 和 Go 标准库
+
 toolkit
   -> message, model, tool
 
@@ -114,7 +117,7 @@ tiggy-manage-agent
 2. 每个已接受 Tool Call 都有一个终局结果、明确中断或经过校验的审批暂停。
 3. Tool Result 引用真实 Tool Call，且不能重复终局。
 4. 取消传播到 Model、MCP、Tool、Memory 和 FileSystem。
-5. 迭代、模型调用、工具调用、Token、输出和 Deadline 均有边界。
+5. 迭代、模型调用、工具调用、Token、流式 Delta 数量/字节、输出和 Deadline 均有边界。
 6. 并发事件可以交错，但 Tool Result 按模型调用顺序投影。
 7. Context Compression 保持 Tool Call/Result 和未完成工作完整。
 8. 扩展失败必须分类，不能静默破坏 Runtime 状态。
@@ -158,9 +161,11 @@ Artifact  不直接放入模型上下文的大型产物
 
 Context 规划必须计算 System Prompt、Tool Schema、输出预留、未完成 Tool 关系、近期消息、Recall Memory 和模型窗口。Compression 按语义组工作，不按任意字符区间截断。
 
-`contextmanager.TokenPlanner` 通过注入的 Provider-aware 或显式 Estimated Counter 执行不可变预检。发生 Overflow 时，可选的 Model-specific `Compressor` 只接收 Core 构造的非活跃语义组。Core 保留 System Message、当前轮、未完成 Tool Call 和 Tool Call/Result 关系，自行构造摘要替换，并在 Provider Call 前重新规划一次。Compression 只改变 Request View，不改写完整 Agent State。失败或压缩不足时采用 Fail-closed，而不是有损删除。
+`contextmanager.TokenPlanner` 通过注入的 Provider-aware 或显式 Estimated Counter 执行不可变预检。发生 Overflow 时，可选的 Model-specific `Compressor` 只接收 Core 构造的非活跃语义组。Core 保留 System Message、当前轮、未完成 Tool Call 和 Tool Call/Result 关系，自行构造摘要替换，并在 Provider Call 前重新规划一次。显式 Failure Policy 还可在 Fits 预检后 Provider 仍报 Context Length 时复用该边界一次，用于容纳 Tokenizer 或 Endpoint 漂移，但不伪造 Overflow 数值。Compression 只改变 Request View，不改写完整 Agent State。失败或压缩不足时采用 Fail-closed，而不是有损删除。
 
-这些保证是结构保证。Core 记录 Strategy/Version 和来源 Message ID，但无法证明注入摘要的事实完全忠实。Compressor 质量及其拥有的外部资源由应用负责。详见 [ADR 0007](./adr/0007-context-compression.md)。
+这些保证是结构保证。Core 记录 Strategy/Version 和来源 Message ID，但无法证明注入摘要的事实完全忠实。Compressor 质量及其拥有的外部资源由应用负责。可选 `evaluation/compression` 包帮助应用建立来源绑定事实、大小、Provenance 和压缩后预算 Fixture，但不会成为 Runtime 执行依赖。详见 [ADR 0007](./adr/0007-context-compression.md) 和 [ADR 0016](./adr/0016-compressor-quality-evaluation.md)。
+
+新 Runtime 的每次物理 Model Call 还会在 Start Event 上记录固定大小、无正文的最终 Context Manifest。它把 Request 形态诊断与 Call ID 关联起来，但不会向 Observer 提供 Agent State 或 Request Body。详见 [Context 诊断快照](./context-diagnostics.zh-CN.md) 和 [ADR 0017](./adr/0017-model-context-diagnostic-manifest.md)。
 
 大型成功 Tool Result 可在写入 State 和投影给模型前经过可选 `artifact.Offloader`。Core 把完整 Result 编码为版本化 Envelope，以 SHA-256 绑定，并只接受 Media Type、Size 和 Digest 匹配的 opaque Reference。注入 Store 负责 Durability、Authorization、Encryption、Retention 和 Garbage Collection。Core 不把 Signed URL 放入 Message/Event，不重试 Put，也不自动把 Artifact 取回 Context。详见 [Artifact Offload 语义](./artifact.zh-CN.md)。
 

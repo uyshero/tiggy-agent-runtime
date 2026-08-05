@@ -10,7 +10,7 @@ The minimum configuration is:
 one model.Model + one agent.Config + one User Message
 ```
 
-Toolkit, Memory, Context Planner, MCP, Skills, Observers, and Recorder are optional capabilities. Go 1.25.12 or later is currently required. The project is Apache-2.0 licensed and remains pre-release until an owner-approved tag is published.
+Toolkit, Memory, Context Planner, MCP, Skills, Observers, and Recorder are optional capabilities. Go 1.25.12 or later is currently required. The project is Apache-2.0 licensed, has a local `v0.1.0` release baseline, and remains pre-v1; neither the tag nor these docs claim production readiness.
 
 ## 1. Run the Offline Example
 
@@ -50,6 +50,18 @@ type Model interface {
 }
 ```
 
+For an OpenAI-compatible Chat Completions endpoint, use the optional standard-library Adapter:
+
+```go
+provider, err := openai.New(openai.Config{
+    BaseURL: "https://provider.example/v1",
+    APIKey:  os.Getenv("MODEL_API_KEY"),
+    Client:  &http.Client{Timeout: 90 * time.Second},
+})
+```
+
+See [OpenAI-compatible Provider Adapter](./provider-openai.md) for Tool mapping, streaming, parameters, ownership, and failure semantics. Other providers implement the same small `model.Model` contract.
+
 A Provider Adapter should:
 
 1. own its credentials and HTTP client;
@@ -84,7 +96,7 @@ func (p *Provider) Generate(
 }
 ```
 
-This is an Adapter shape, not a bundled runnable provider. Core does not currently bind an OpenAI, Anthropic, or other vendor SDK. `model.Identity` is diagnostic/routing metadata and must never contain credentials.
+The skeleton is for custom Adapters. Core remains Provider-neutral: `agent` and `model` do not depend on the optional OpenAI-compatible package or a vendor SDK. `model.Identity` is diagnostic/routing metadata and must never contain credentials.
 
 ## 4. Register Tools
 
@@ -265,9 +277,13 @@ if err != nil {
     return err
 }
 config.ContextPlanner = planner
+config.ContextCompressor = compressor
+config.FailurePolicy = agent.TransientModelFailurePolicy{
+    EnableContextRecovery: true,
+}
 ```
 
-Core does not infer tokenizers or windows from model names. Overflow fails before the Provider call unless an application-owned Compressor returns a valid structurally safe summary decision. Compression changes only the request view, never full State. See [Context Manager semantics](./contextmanager.md).
+Core does not infer tokenizers or windows from model names. Overflow fails before the Provider call unless an application-owned Compressor returns a valid structurally safe summary decision. `EnableContextRecovery` separately permits one compression retry when the Provider reports Context Length despite a fitting preflight Plan. It is disabled by default, consumes `MaxModelCalls`, and never rewrites full State. See [Context Manager semantics](./contextmanager.md).
 
 ## 11. Add a Recorder
 

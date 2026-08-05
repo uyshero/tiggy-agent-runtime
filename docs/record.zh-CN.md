@@ -27,6 +27,8 @@ Digest Chain 是完整性 Checksum，不是身份认证或不可否认性。能�
 
 默认使用 `SafeSanitizer`。它保留已审查的 Lifecycle Payload，但移除 Model Delta Text、Reasoning、Tool-call Fragment 和 Provider Error Body；Tool Delta 和未知未来 Event Type 的完整 Payload 在完成隐私审查前都会移除。任何变化都会设置 `payload_redacted=true`。
 
+可选、固定大小的 `model.call.started.context` Manifest 属于已审查 Metadata，因此会被保留。它只包含计数和聚合字节大小，不包含 Request Body 或 Message/Memory/Artifact ID。详见 [Context 诊断快照](./context-diagnostics.zh-CN.md)。
+
 `FullSanitizer` 必须显式选择，会保留所有 Payload Byte。调用方随后负责 Classification、User Consent、Encryption、Access Control、Retention、Deletion 和 Incident Exposure。自定义 Sanitizer 只能修改 Payload；修改 Event Protocol、ID、Type、Sequence、Parent、Run ID 或 Timestamp 会被 Recorder 拒绝。Sanitizer Error/Panic 会转换为严格 Sink Error。
 
 ## 边界与并发

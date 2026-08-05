@@ -19,21 +19,21 @@ These results are an engineering baseline, not a production-readiness claim. Dep
 
 ## Current Blockers
 
-The `v0.1.0` candidate must not be published yet. Remaining blockers are:
+The repository contains a local `v0.1.0` tag at its release commit. The current `HEAD` is one `Unreleased` development commit ahead of that baseline. The audit does not prove that the tag is publicly available, and the `Unreleased` commit must not be treated as a release candidate yet. Remaining blockers are:
 
-- the candidate changes are not a reviewed, clean release commit and no `v0.1.0` tag exists;
+- the current `Unreleased` commit has not been reviewed and assigned a next release version;
 - availability and ownership of the public module path `github.com/uyshero/tiggy-agent-runtime` still require owner confirmation;
 - delivery and monitoring of `security@tiggy.cloud` must be operationally confirmed;
-- an authorized owner has not yet approved the actual publication action.
+- an authorized owner has not yet approved the next publication action.
 
-Apache-2.0, the private security-reporting address, and the `v0.1.0` candidate date are now recorded. Do not resolve remaining items by inventing ownership, operational validation, or publication approval.
+Apache-2.0, the private security-reporting address, and the `v0.1.0` baseline date are recorded. Do not resolve remaining items by inventing ownership, operational validation, or publication approval.
 
 ## Owner Decisions
 
 Recorded decisions:
 
 - project license: Apache-2.0;
-- first candidate: `v0.1.0`, dated 2026-08-04;
+- first tagged baseline: `v0.1.0`, dated 2026-08-04;
 - security policy: latest `0.1.x`, private reports to `security@tiggy.cloud`.
 
 Before publication, the repository owner must still record:
@@ -60,15 +60,16 @@ make release-verify RELEASE_VERSION=v0.1.0
 
 The expected changelog heading is `## [0.1.0] - YYYY-MM-DD`. The command does not create commits or tags and does not test public repository availability. A clean, committed release candidate is required, so the audit is expected to fail in an uncommitted extraction workspace.
 
-## First-Release Checklist
+## Current Release Checklist
 
 - [ ] owner and repository ownership are recorded;
 - [x] Apache-2.0 is approved and `LICENSE` is added;
 - [x] dependency licenses are reviewed and an allow/deny policy is enforced in CI;
 - [ ] public module path ownership and repository availability are confirmed;
 - [x] `SECURITY.md` contains the required supported-version, reporting, and contact contract;
-- [ ] initial history is reviewed and the candidate worktree is clean;
-- [x] candidate changes are recorded under `## [0.1.0] - 2026-08-04`;
+- [x] the local `v0.1.0` tag points at its release commit;
+- [ ] the current `Unreleased` commit is reviewed and assigned a next release version;
+- [x] the `v0.1.0` baseline is recorded under `## [0.1.0] - 2026-08-04`;
 - [ ] `make release-verify RELEASE_VERSION=vX.Y.Z` passes at the tagged commit;
 - [ ] scheduled MCP compatibility is green for the pinned reference-server versions;
 - [ ] release notes state pre-v1 compatibility, supported Go version, known limitations, and rollback or revocation ownership;

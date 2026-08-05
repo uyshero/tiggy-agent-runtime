@@ -57,7 +57,9 @@
 - Active or unresolved calls cannot be compressed away.
 - Compression records source coverage, input/output token estimates, strategy identity, and fallback behavior.
 - Compression failure has a bounded fallback and cannot silently delete context.
-- A context-length provider error may trigger at most one policy-controlled compress-and-retry cycle by default.
+- When explicitly enabled, a context-length Provider error may trigger at most one policy-controlled compress-and-retry cycle per Model Target.
+- Production Compressors should carry deterministic source-bound fact, structural, provenance, summary-size, and post-compression budget fixtures through `evaluation/compression`.
+- Every new Runtime Model Call records one fixed-size, content-free final Context Manifest; old Protocol V1 events may omit it.
 
 ## Memory Management
 

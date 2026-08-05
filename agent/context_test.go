@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -25,6 +26,9 @@ func TestAgentPlansContextBeforeModelCall(t *testing.T) {
 	}
 	if err := agenttest.ValidateTrace(result.Events); err != nil {
 		t.Fatal(err)
+	}
+	if err := agenttest.ValidateTrace(withoutModelContexts(t, result.Events)); err != nil {
+		t.Fatalf("legacy model-call trace: %v", err)
 	}
 	if len(script.Calls()) != 1 {
 		t.Fatalf("model calls = %d", len(script.Calls()))
@@ -230,6 +234,9 @@ func TestAgentCompressesOverflowingContextWithoutMutatingState(t *testing.T) {
 	if err := agenttest.ValidateTrace(result.Events); err != nil {
 		t.Fatal(err)
 	}
+	if err := agenttest.ValidateTrace(withoutCompressionTriggers(t, result.Events)); err != nil {
+		t.Fatalf("legacy compression trace: %v", err)
+	}
 }
 
 func TestAgentFailsClosedWhenCompressionIsInsufficient(t *testing.T) {
@@ -323,6 +330,82 @@ func TestAgentCompressionEventSinkFailureKeepsBalancedTrace(t *testing.T) {
 	assertRunError(t, err, agent.ErrorEventSink, "event_sink_failed")
 	if countEventType(result.Events, event.CompressionStarted) != 1 || countEventType(result.Events, event.CompressionFailed) != 1 {
 		t.Fatalf("compression events = %#v", agenttest.EventTypes(result.Events))
+	}
+	if err := agenttest.ValidateTrace(result.Events); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProviderContextLengthRecoveryCompressesRequestViewOnce(t *testing.T) {
+	t.Parallel()
+
+	compressions := 0
+	provider := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Err: &model.ProviderError{
+			Class: model.ErrorContextLength, Code: "context_length_exceeded", SafeDetail: "context too long",
+		}},
+		agenttest.ModelStep{
+			Assert: func(request model.Request) error {
+				if len(request.Messages) != 2 || request.Messages[0].Role != message.RoleSystem || request.Messages[0].Content[0].Text != "recovered history" || request.Messages[1].Role != message.RoleUser {
+					return errors.New("recovery retry did not use the compressed request view")
+				}
+				return nil
+			},
+			Response: textResponse("recovered"),
+		},
+	)
+	value := newProviderRecoveryAgent(t, provider, &compressions)
+	result, err := value.Continue(context.Background(), compressionPreviousState(), userMessage("new question"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.Calls()) != 2 || compressions != 1 {
+		t.Fatalf("Provider/compressor calls = %d/%d, want 2/1", len(provider.Calls()), compressions)
+	}
+	contexts := modelContextPayloads(t, result.Events)
+	if len(contexts) != 2 || contexts[0].ProjectedMessageCount != 3 || contexts[0].RequestMessageCount != 3 || contexts[0].CompressionSummaries != 0 ||
+		contexts[1].ProjectedMessageCount != 3 || contexts[1].RequestMessageCount != 2 || contexts[1].CompressionSummaries != 1 {
+		t.Fatalf("model context snapshots = %#v", contexts)
+	}
+	if len(result.State.Messages) != 4 {
+		t.Fatalf("State messages = %d, want complete uncompressed history", len(result.State.Messages))
+	}
+	for _, value := range result.State.Messages {
+		if value.Role == message.RoleSystem {
+			t.Fatalf("recovery summary leaked into State: %#v", value)
+		}
+	}
+	payload := findCompressionPayload(t, result.Events, event.CompressionCompleted)
+	if payload.Trigger != string(contextmanager.CompressionTriggerProviderContextLength) || payload.OverflowTokens != 0 || payload.BeforeInputTokens != 800 || payload.AfterInputTokens != 400 {
+		t.Fatalf("recovery compression payload = %#v", payload)
+	}
+	retryEvent := findEvent(t, result.Events, event.RetryScheduled)
+	retry, err := agenttest.DecodePayload[event.RetryScheduledPayload](retryEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.Reason != "context_length_recovery" || retry.NextAttempt != 2 || retry.DelayMillis != 0 {
+		t.Fatalf("recovery retry payload = %#v", retry)
+	}
+	if err := agenttest.ValidateTrace(result.Events); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProviderContextLengthRecoveryDoesNotRepeatForTarget(t *testing.T) {
+	t.Parallel()
+
+	compressions := 0
+	provider := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Err: &model.ProviderError{Class: model.ErrorContextLength, Code: "first", SafeDetail: "context too long"}},
+		agenttest.ModelStep{Err: &model.ProviderError{Class: model.ErrorContextLength, Code: "second", SafeDetail: "still too long"}},
+	)
+	value := newProviderRecoveryAgent(t, provider, &compressions)
+	result, err := value.Continue(context.Background(), compressionPreviousState(), userMessage("new question"), nil)
+	assertRunError(t, err, agent.ErrorModel, string(model.ErrorContextLength))
+	if len(provider.Calls()) != 2 || compressions != 1 || countEventType(result.Events, event.RetryScheduled) != 1 || countEventType(result.Events, event.CompressionCompleted) != 1 {
+		t.Fatalf("calls/events = Provider %d, compressor %d, retries %d, compressions %d",
+			len(provider.Calls()), compressions, countEventType(result.Events, event.RetryScheduled), countEventType(result.Events, event.CompressionCompleted))
 	}
 	if err := agenttest.ValidateTrace(result.Events); err != nil {
 		t.Fatal(err)
@@ -470,6 +553,41 @@ func newCompressionAgent(t *testing.T, provider model.Model, planner contextmana
 	return value
 }
 
+func newProviderRecoveryAgent(t *testing.T, provider model.Model, compressions *int) *agent.Agent {
+	t.Helper()
+	limits := agent.DefaultLimits()
+	limits.MaxOutputTokensPerCall = 100
+	compressor := agenttest.FuncCompressor(func(_ context.Context, request contextmanager.CompressionRequest) (contextmanager.CompressionDecision, error) {
+		(*compressions)++
+		if request.Trigger != contextmanager.CompressionTriggerProviderContextLength || !request.Plan.Fits || request.Plan.OverflowTokens != 0 {
+			return contextmanager.CompressionDecision{}, errors.New("invalid Provider recovery request")
+		}
+		return contextmanager.CompressionDecision{
+			Strategy:      contextmanager.CompressionStrategy{Name: "provider-recovery", Version: "1"},
+			CoveredGroups: 1, Summary: "recovered history",
+		}, nil
+	})
+	value, err := agent.New(agent.Config{
+		Name: "provider-context-recovery", Model: provider,
+		ModelIdentity: model.Identity{Provider: "test", Model: "scripted"},
+		ContextPlanner: messageCountPlanner(t, func(messages int) int64 {
+			if messages > 2 {
+				return 800
+			}
+			return 400
+		}),
+		ContextCompressor: compressor,
+		FailurePolicy: agent.TransientModelFailurePolicy{
+			MaxAttemptsPerTarget: 1, EnableContextRecovery: true,
+		},
+		Limits: limits, IDs: agenttest.SequentialIDs(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
 func messageCountPlanner(t *testing.T, count func(int) int64) *contextmanager.TokenPlanner {
 	t.Helper()
 	planner, err := contextmanager.NewTokenPlanner(contextmanager.TokenPlannerOptions{
@@ -528,6 +646,77 @@ func findContextPayload(t *testing.T, events []event.Event) event.ContextPrepare
 	}
 	t.Fatal("context.prepared event not found")
 	return event.ContextPreparePayload{}
+}
+
+func modelContextPayloads(t *testing.T, events []event.Event) []event.ModelContextPayload {
+	t.Helper()
+	var payloads []event.ModelContextPayload
+	for _, value := range events {
+		if value.Type != event.ModelCallStarted {
+			continue
+		}
+		payload, err := agenttest.DecodePayload[event.ModelCallPayload](value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if payload.Context == nil {
+			t.Fatal("model.call.started has no context snapshot")
+		}
+		payloads = append(payloads, *payload.Context)
+	}
+	return payloads
+}
+
+func withoutCompressionTriggers(t *testing.T, events []event.Event) []event.Event {
+	t.Helper()
+	legacy := append([]event.Event(nil), events...)
+	removed := 0
+	for index := range legacy {
+		if legacy[index].Type != event.CompressionStarted && legacy[index].Type != event.CompressionCompleted && legacy[index].Type != event.CompressionFailed {
+			continue
+		}
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(legacy[index].Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		delete(payload, "trigger")
+		removed++
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy[index].Payload = encoded
+	}
+	if removed == 0 {
+		t.Fatal("trace contains no compression events")
+	}
+	return legacy
+}
+
+func withoutModelContexts(t *testing.T, events []event.Event) []event.Event {
+	t.Helper()
+	legacy := append([]event.Event(nil), events...)
+	removed := 0
+	for index := range legacy {
+		if legacy[index].Type != event.ModelCallStarted {
+			continue
+		}
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(legacy[index].Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		delete(payload, "context")
+		removed++
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy[index].Payload = encoded
+	}
+	if removed == 0 {
+		t.Fatal("trace contains no Model Call start events")
+	}
+	return legacy
 }
 
 func containsEventType(events []event.Event, eventType event.Type) bool {

@@ -39,7 +39,12 @@ func (e *memoryPortPanic) Error() string {
 }
 
 // recallMemory 在 Run 开始时调用 Port.Recall，校验结果后投影为内部 System Message。
-// FailureModeDegrade 下普通失败会跳过回忆并继续 Run。
+//
+// 要点：
+//   - Memory == nil：直接空结果
+//   - degrade：普通失败跳过回忆继续 Run
+//   - fail_run / panic / 非法结果：终止
+//   - 投影只注入模型请求（见 projectRecalledMemory），不写入 State.Messages
 func (a *Agent) recallMemory(ctx context.Context, runID string, input message.Message, emit *emitter) memoryRecall {
 	if a.config.Memory == nil {
 		return memoryRecall{}
@@ -154,7 +159,8 @@ func finishMemoryRecall(
 	return result
 }
 
-// observeMemory 在一轮完成后调用 Port.Observe；降级模式下普通失败不终止 Run。
+// observeMemory 在一轮成功完成后调用 Port.Observe；只投喂本轮 messages[turnStart:]。
+// 降级模式下普通失败不终止 Run（finishMemoryObserveFailure(degraded=true)）。
 func (a *Agent) observeMemory(
 	ctx context.Context,
 	runID string,

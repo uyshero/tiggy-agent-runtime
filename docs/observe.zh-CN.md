@@ -21,6 +21,8 @@ Event Sink 仍是同步边界。直接传给 Agent 的 Sink 是严格模式：Er
 
 Logger 接收 Correlation ID、Event Type/Sequence、有界 Operation Metadata、Token Count 和安全的 `event.ErrorPayload` 字段，但绝不记录原始 Event Payload。尤其不会记录 Model Delta Text/Reasoning、Tool Argument Fragment、Message Content、Artifact Body、Memory Text、Scope Key 或 Provenance ID。Logger 的二次脱敏、输出位置、保留周期和访问控制仍由应用负责。
 
+对于 `model.call.started`，LogSink 会记录选定的固定 Context Manifest 聚合值，例如压缩前/最终 Message 数、Memory/Compression Projection 数、Text Byte、Artifact Block 和 Tool Definition 数量/字节，但不记录对应正文或 ID。详见 [Context 诊断快照](./context-diagnostics.zh-CN.md)。
+
 ## 指标
 
 `observe.Metrics` 消费从 `run.started` 开始的完整 Event Stream，通过 Event Parent ID 关联成对 Operation，并记录：

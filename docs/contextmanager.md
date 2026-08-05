@@ -47,7 +47,7 @@ All counts are positive and bounded. `Plan.Validate` checks these equations, Mod
 
 Default pressure thresholds are 80% Warning and 95% Critical. Pressure is diagnostic and does not itself remove context. Any positive overflow produces `PressureOverflow` and `Fits=false`.
 
-The Agent uses `Limits.MaxOutputTokensPerCall` as output reserve. It plans once per Model target for one generation cycle: same-target retries reuse the unchanged Plan, a Fallback uses its own Planner/window, and the next ReAct iteration replans because Tool Results changed the context. When planning is enabled, every Fallback must configure its own Planner.
+The Agent uses `Limits.MaxOutputTokensPerCall` as output reserve. It normally plans once per Model target for one generation cycle: ordinary same-target retries reuse the unchanged Plan, a Fallback uses its own Planner/window, and the next ReAct iteration replans because Tool Results changed the context. A policy-authorized Provider context-length recovery is the bounded exception: the compressed recovery view is planned once before its retry. When planning is enabled, every Fallback must configure its own Planner.
 
 ## Runtime Behavior
 
@@ -64,13 +64,17 @@ Without a configured Compressor, overflow stops before `model.call.started` with
 
 ## Structurally Safe Compression
 
-An Agent may bind a `contextmanager.Compressor` beside each Context Planner. Compression runs only after a validated overflow Plan. Core creates ordered inactive-history groups and passes owned copies to the Compressor:
+An Agent may bind a `contextmanager.Compressor` beside each Context Planner. Compression normally runs after a validated overflow Plan. It may also run once after a policy-authorized Provider context-length rejection when the failed request had a validated fitting Plan. Core creates ordered inactive-history groups and passes owned copies to the Compressor:
 
 ```go
 type Compressor interface {
     Compress(context.Context, contextmanager.CompressionRequest) (contextmanager.CompressionDecision, error)
 }
 ```
+
+`CompressionRequest.Trigger` is `budget_overflow` or `provider_context_length`. The latter retains the honest fitting Plan and therefore records zero overflow; it means the Provider rejected a request that local preflight accepted, not that Core measured a deficit.
+
+For compatibility, a missing Trigger in an older Compression Request or Event is interpreted only as the original `budget_overflow` path. An explicit `provider_context_length` Event must still be parented to its matching failed Model Call.
 
 The Decision supplies a strategy name/version, a positive prefix count of eligible groups, and summary text. It never supplies the final Message list. Core uses `ApplyCompression` to replace the covered groups with one internal System summary carrying source Message IDs in Metadata. This prevents a Compressor from reordering protected messages or splitting a group.
 
@@ -82,7 +86,7 @@ Grouping and protection rules are deterministic:
 - only a contiguous inactive prefix is eligible;
 - the full `Agent.State` is never rewritten; only the next provider request sees the summary view.
 
-After one compression attempt, Agent plans the result again. A fitting result proceeds to `model.call.started`; an insufficient result returns `limit/context_overflow` without invoking the provider. Compressor errors and panics return `internal/context_compression_failed`, invalid Decisions return `internal/invalid_compression_result`, and cancellation returns `canceled/context_compression_canceled`. No eligible group returns `limit/context_compression_unavailable`.
+After one compression attempt, Agent plans the result again. A fitting budget-compression result proceeds to `model.call.started`; a fitting Provider-recovery result emits `retry.scheduled` and performs one same-target retry with a new Call ID. An insufficient result returns `limit/context_overflow` without another Provider call. Compressor errors and panics return `internal/context_compression_failed`, invalid Decisions return `internal/invalid_compression_result`, and cancellation returns `canceled/context_compression_canceled`. No eligible group returns `limit/context_compression_unavailable`.
 
 Compression emits a balanced operation around the second planning pass:
 
@@ -102,6 +106,8 @@ Outcomes record Model identity, before/after/target input tokens, measured overf
 
 Planner requests and results are copied values. `TokenPlanner` is immutable and is concurrency-safe when its injected Counter is concurrency-safe. Context cancellation is propagated, but Core cannot forcibly preempt a Counter that ignores Context.
 
-This stage does not implement a model-backed summarizer, provider context-length retry, category-level token attribution, or prompt caching decisions. A Compressor that calls an external model owns that call and its resource/cost reporting; the current Core contract does not add it to Agent `Usage` or `MaxModelCalls`.
+Core does not implement a model-backed summarizer, category-level token attribution, or prompt caching decisions. Provider context-length recovery is disabled by default and requires `TransientModelFailurePolicy.EnableContextRecovery`, a Planner, and a Compressor. Runtime permits it once per Model Target and counts the retried Provider request against `MaxModelCalls`. A Compressor that calls an external model owns that call and its resource/cost reporting; the current Core contract does not add the Compressor's own work to Agent `Usage` or `MaxModelCalls`.
 
 Large Tool Result Artifact offload is implemented as a separate pre-projection boundary; see [Artifact offload semantics](./artifact.md).
+
+The final content-free Request composition for each physical call is available on `model.call.started.context`; see [Context diagnostics](./context-diagnostics.md).

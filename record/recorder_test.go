@@ -17,7 +17,7 @@ func TestSafeSanitizerRedactsDeltasAndUnknownPayloads(t *testing.T) {
 	base := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	values := []event.Event{
 		recordEvent("run_safe", "start", event.RunStarted, 1, base, "", `{"agent":"test"}`),
-		recordEvent("run_safe", "model", event.ModelCallStarted, 2, base.Add(time.Millisecond), "", `{"call_id":"call","model":{"provider":"test","model":"stable"},"attempt":1}`),
+		recordEvent("run_safe", "model", event.ModelCallStarted, 2, base.Add(time.Millisecond), "", `{"call_id":"call","model":{"provider":"test","model":"stable"},"attempt":1,"context":{"projected_message_count":2,"request_message_count":2,"system_message_count":1,"user_message_count":1,"public_message_count":1,"internal_message_count":1,"recalled_memory_messages":0,"compression_summaries":0,"text_blocks":2,"text_bytes":12,"thinking_blocks":0,"thinking_bytes":0,"image_blocks":0,"tool_call_blocks":0,"tool_argument_bytes":0,"tool_result_blocks":0,"artifact_blocks":0,"tool_definition_count":0,"tool_definition_bytes":0}}`),
 		recordEvent("run_safe", "delta", event.ModelCallDelta, 3, base.Add(2*time.Millisecond), "model", `{"call_id":"call","delta":{"type":"tool_call","index":0,"text":"secret text","tool_call":{"index":0,"id":"secret-id","name":"secret-tool","arguments_fragment":"secret-arguments"},"provider_error":{"class":"provider","message":"secret-error"}}}`),
 		recordEvent("run_safe", "future", event.Type("future.event"), 4, base.Add(3*time.Millisecond), "", `{"secret":"future-secret"}`),
 		recordEvent("run_safe", "model_done", event.ModelCallCompleted, 5, base.Add(4*time.Millisecond), "model", `{"call_id":"call","model":{"provider":"test","model":"stable"},"attempt":1,"status":"completed"}`),
@@ -29,6 +29,10 @@ func TestSafeSanitizerRedactsDeltasAndUnknownPayloads(t *testing.T) {
 		}
 	}
 	recording, _ := journal.Recording("run_safe")
+	modelStart := recording.Entries[1]
+	if modelStart.PayloadRedacted || !strings.Contains(string(modelStart.Event.Payload), `"projected_message_count":2`) {
+		t.Fatalf("safe Model Context manifest was not retained: %#v", modelStart)
+	}
 	delta := recording.Entries[2]
 	if !delta.PayloadRedacted {
 		t.Fatal("Model Delta was not marked redacted")

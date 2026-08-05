@@ -12,14 +12,17 @@ import (
 )
 
 // contextPreparation 是模型调用前的上下文准备结果（可能已压缩）。
+// messages 仅用于本次模型请求，不会写回 Agent State。
 type contextPreparation struct {
 	messages []message.Message
+	plan     contextmanager.Plan
 	err      *RunError
 	reason   string
 	canceled bool
 }
 
 // prepareContext 规划上下文；溢出且配置了 Compressor 时尝试压缩，否则失败。
+// Planner 为 nil 时原样返回消息副本。
 func (a *Agent) prepareContext(
 	ctx context.Context,
 	target ModelTarget,
@@ -29,47 +32,59 @@ func (a *Agent) prepareContext(
 ) contextPreparation {
 	source := message.CloneAll(messages)
 	if target.ContextPlanner == nil {
-		return contextPreparation{messages: source}
+		return contextPreparation{messages: source} // 无规划：直接用原消息
 	}
 	plan, failure := a.planContext(ctx, target, source, tools, emit, "")
 	if failure.err != nil {
 		return failure
 	}
 	if plan.Fits {
-		return contextPreparation{messages: source}
+		return contextPreparation{messages: source, plan: plan} // 放得下：不压缩
 	}
 	if target.ContextCompressor == nil {
 		return contextPreparation{err: contextOverflowError(plan), reason: "context_overflow"}
 	}
-	return a.compressContext(ctx, target, source, tools, plan, emit)
+	return a.compressContext(ctx, target, source, tools, plan, contextmanager.CompressionTriggerBudgetOverflow, "", emit)
 }
 
 // compressContext 在不修改 Agent State 的前提下，用 Compressor 生成可放入窗口的候选消息。
+// 压缩后会再 plan 一次；仍不 Fits 则 fail-closed（不带着溢出上下文去调模型）。
 func (a *Agent) compressContext(
 	ctx context.Context,
 	target ModelTarget,
 	messages []message.Message,
 	tools []model.ToolDefinition,
 	plan contextmanager.Plan,
+	trigger contextmanager.CompressionTrigger,
+	parentID string,
 	emit *emitter,
 ) contextPreparation {
-	request, requestErr := contextmanager.NewCompressionRequest(target.Identity, messages, plan)
+	var request contextmanager.CompressionRequest
+	var requestErr error
+	switch trigger {
+	case contextmanager.CompressionTriggerBudgetOverflow:
+		request, requestErr = contextmanager.NewCompressionRequest(target.Identity, messages, plan)
+	case contextmanager.CompressionTriggerProviderContextLength:
+		request, requestErr = contextmanager.NewProviderContextLengthCompressionRequest(target.Identity, messages, plan)
+	default:
+		requestErr = fmt.Errorf("unsupported compression trigger %q", trigger)
+	}
 	candidateGroups := len(request.Groups)
-	started, emitErr := emit.emit(event.CompressionStarted, "", event.CompressionPayload{
+	started, emitErr := emit.emit(event.CompressionStarted, parentID, event.CompressionPayload{
 		Model: target.Identity, BeforeInputTokens: plan.InputTokens, TargetInputTokens: plan.AvailableInputTokens,
-		OverflowTokens: plan.OverflowTokens, CandidateGroups: candidateGroups,
+		Trigger: string(trigger), OverflowTokens: plan.OverflowTokens, CandidateGroups: candidateGroups,
 	})
 	if emitErr != nil {
 		runtimeError := &RunError{Class: ErrorEventSink, Code: "event_sink_failed", SafeMessage: "The event consumer failed.", Cause: emitErr}
-		_, _ = emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, candidateGroups, "failed", runtimeError))
+		_, _ = emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, trigger, candidateGroups, "failed", runtimeError))
 		return contextPreparation{err: runtimeError, reason: "event_sink_failed"}
 	}
 	if requestErr != nil {
 		runtimeError := &RunError{
 			Class: ErrorLimit, Code: "context_compression_unavailable",
-			SafeMessage: "The overflowing context has no history that can be compressed safely.", Cause: requestErr,
+			SafeMessage: "The model context has no history that can be compressed safely.", Cause: requestErr,
 		}
-		_, completedErr := emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, candidateGroups, "failed", runtimeError))
+		_, completedErr := emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, trigger, candidateGroups, "failed", runtimeError))
 		if completedErr != nil {
 			return contextPreparation{err: eventSinkRunError(completedErr), reason: "event_sink_failed"}
 		}
@@ -79,12 +94,12 @@ func (a *Agent) compressContext(
 	decision, compressionErr := callCompressor(ctx, target.ContextCompressor, request)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		runtimeError := &RunError{Class: ErrorCanceled, Code: "context_compression_canceled", SafeMessage: "Context compression was canceled.", Cause: ctxErr}
-		_, _ = emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, candidateGroups, "canceled", runtimeError))
+		_, _ = emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, trigger, candidateGroups, "canceled", runtimeError))
 		return contextPreparation{err: runtimeError, reason: "context_canceled", canceled: true}
 	}
 	if compressionErr != nil {
 		runtimeError := &RunError{Class: ErrorInternal, Code: "context_compression_failed", SafeMessage: "The Agent could not compress its model context.", Cause: compressionErr}
-		_, completedErr := emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, candidateGroups, "failed", runtimeError))
+		_, completedErr := emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, trigger, candidateGroups, "failed", runtimeError))
 		if completedErr != nil {
 			return contextPreparation{err: eventSinkRunError(completedErr), reason: "event_sink_failed"}
 		}
@@ -93,7 +108,7 @@ func (a *Agent) compressContext(
 	compressed, applyErr := contextmanager.ApplyCompression(messages, request, decision, a.config.IDs("msg"))
 	if applyErr != nil {
 		runtimeError := &RunError{Class: ErrorInternal, Code: "invalid_compression_result", SafeMessage: "The context compressor returned an invalid result.", Cause: applyErr}
-		_, completedErr := emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, candidateGroups, "failed", runtimeError))
+		_, completedErr := emit.emit(event.CompressionFailed, started.ID, compressionFailurePayload(target.Identity, plan, trigger, candidateGroups, "failed", runtimeError))
 		if completedErr != nil {
 			return contextPreparation{err: eventSinkRunError(completedErr), reason: "event_sink_failed"}
 		}
@@ -102,7 +117,7 @@ func (a *Agent) compressContext(
 
 	compressedPlan, planFailure := a.planContext(ctx, target, compressed.Messages, tools, emit, started.ID)
 	if planFailure.err != nil {
-		payload := compressionFailurePayload(target.Identity, plan, candidateGroups, "failed", planFailure.err)
+		payload := compressionFailurePayload(target.Identity, plan, trigger, candidateGroups, "failed", planFailure.err)
 		if planFailure.canceled {
 			payload.Status = "canceled"
 		}
@@ -115,7 +130,7 @@ func (a *Agent) compressContext(
 		return planFailure
 	}
 	payload := event.CompressionPayload{
-		Model: target.Identity, Status: "completed", StrategyName: compressed.Strategy.Name,
+		Model: target.Identity, Trigger: string(trigger), Status: "completed", StrategyName: compressed.Strategy.Name,
 		StrategyVersion: compressed.Strategy.Version, BeforeInputTokens: plan.InputTokens,
 		AfterInputTokens: compressedPlan.InputTokens, TargetInputTokens: plan.AvailableInputTokens,
 		OverflowTokens: plan.OverflowTokens, CandidateGroups: candidateGroups, CoveredGroups: compressed.CoveredGroups,
@@ -135,9 +150,12 @@ func (a *Agent) compressContext(
 	if completedErr != nil {
 		return contextPreparation{err: eventSinkRunError(completedErr), reason: "event_sink_failed"}
 	}
-	return contextPreparation{messages: compressed.Messages}
+	return contextPreparation{messages: compressed.Messages, plan: compressedPlan}
 }
 
+// planContext 调用 Planner，发出 ContextPrepareStarted/Prepared 事件。
+// parentID 非空时挂在父事件下（例如压缩后再规划，挂在 CompressionStarted）。
+// 返回的 Plan.Fits=false 不算错误；由调用方决定压缩或失败。
 func (a *Agent) planContext(
 	ctx context.Context,
 	target ModelTarget,
@@ -247,9 +265,9 @@ func eventSinkRunError(cause error) *RunError {
 	return &RunError{Class: ErrorEventSink, Code: "event_sink_failed", SafeMessage: "The event consumer failed.", Cause: cause}
 }
 
-func compressionFailurePayload(identity model.Identity, plan contextmanager.Plan, candidateGroups int, status string, runtimeError *RunError) event.CompressionPayload {
+func compressionFailurePayload(identity model.Identity, plan contextmanager.Plan, trigger contextmanager.CompressionTrigger, candidateGroups int, status string, runtimeError *RunError) event.CompressionPayload {
 	return event.CompressionPayload{
-		Model: identity, Status: status, BeforeInputTokens: plan.InputTokens,
+		Model: identity, Trigger: string(trigger), Status: status, BeforeInputTokens: plan.InputTokens,
 		TargetInputTokens: plan.AvailableInputTokens, OverflowTokens: plan.OverflowTokens,
 		CandidateGroups: candidateGroups, Fallback: "fail_closed", Error: eventError(runtimeError),
 	}

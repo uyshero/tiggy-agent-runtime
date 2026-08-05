@@ -38,6 +38,9 @@ observe/otel
 record
   -> event, model, Go standard library
 
+provider/openai
+  -> message, model, net/http, Go standard library
+
 toolkit
   -> message, model, tool
 
@@ -119,7 +122,7 @@ The runtime will be designed around these invariants:
 2. Every accepted tool call reaches one terminal result, explicit interruption, or a validated approval suspension.
 3. A tool result references an existing tool call and cannot be terminal twice.
 4. Cancellation propagates to model, MCP, tool, memory, and FileSystem calls.
-5. Iteration, model-call, tool-call, token, output, and deadline limits are bounded.
+5. Iteration, model-call, tool-call, token, streamed Delta count/bytes, output, and deadline limits are bounded.
 6. Concurrent tool events may interleave, but results are projected in model-call order.
 7. Context compression preserves tool-call/result relationships and active work.
 8. Extension failures are classified and cannot silently corrupt runtime state.
@@ -167,9 +170,11 @@ Artifact  Large outputs stored outside model context
 
 Context preparation accounts for the system prompt, tool schemas, output reserve, active tool relationships, recent messages, recalled memory, and model window. Compression operates on semantic groups rather than arbitrary character ranges.
 
-`contextmanager.TokenPlanner` performs immutable preflight accounting through an injected provider-aware or explicitly estimated Counter. On overflow, an optional model-specific `Compressor` receives only Core-built inactive semantic groups. Core preserves System messages, the latest turn, unresolved Tool Calls, and Tool Call/Result relationships; constructs the summary replacement itself; and replans once before provider invocation. Compression changes only the request view, not full Agent State. Failure or insufficient reduction falls back to fail-closed rather than lossy deletion.
+`contextmanager.TokenPlanner` performs immutable preflight accounting through an injected provider-aware or explicitly estimated Counter. On overflow, an optional model-specific `Compressor` receives only Core-built inactive semantic groups. Core preserves System messages, the latest turn, unresolved Tool Calls, and Tool Call/Result relationships; constructs the summary replacement itself; and replans once before provider invocation. An explicit Failure Policy may use the same boundary once when a Provider reports Context Length after a fitting preflight, covering tokenizer or endpoint drift without inventing an overflow value. Compression changes only the request view, not full Agent State. Failure or insufficient reduction falls back to fail-closed rather than lossy deletion.
 
-These are structural guarantees. Core records strategy/version and source Message IDs, but it cannot prove that an injected summary is factually faithful. Compressor quality and any external resources it owns remain application responsibilities. See [ADR 0007](./adr/0007-context-compression.md).
+These are structural guarantees. Core records strategy/version and source Message IDs, but it cannot prove that an injected summary is factually faithful. Compressor quality and any external resources it owns remain application responsibilities. The opt-in `evaluation/compression` package helps applications enforce source-bound fact, size, provenance, and post-compression budget fixtures without becoming a Runtime dependency. See [ADR 0007](./adr/0007-context-compression.md) and [ADR 0016](./adr/0016-compressor-quality-evaluation.md).
+
+Each new physical Model Call also records a fixed-size, content-free final Context Manifest on its start Event. It correlates request-shape diagnostics with the Call ID without giving observers Agent State or request bodies. See [Context diagnostics](./context-diagnostics.md) and [ADR 0017](./adr/0017-model-context-diagnostic-manifest.md).
 
 Large successful Tool Results may pass through an optional `artifact.Offloader` before State and model projection. Core encodes the complete result in a versioned envelope, binds it to SHA-256, and accepts only opaque references matching its media type, size, and digest. The injected Store owns durability, authorization, encryption, retention, and garbage collection. Core never places signed URLs in Message/Event values, never retries a Put, and never auto-fetches an Artifact into context. See [Artifact offload semantics](./artifact.md).
 

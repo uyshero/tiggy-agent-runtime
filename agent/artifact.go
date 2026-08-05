@@ -21,6 +21,9 @@ type toolResultProjection struct {
 }
 
 // projectToolResult 在配置了 Offloader 时，把超限 Tool Result 卸载到 Artifact Store。
+//
+// 流程：NewRequest → OffloadStarted → Offload → ApplyDecision → OffloadCompleted。
+// Offloader 为 nil 时深拷贝原结果直接返回。
 func (a *Agent) projectToolResult(
 	ctx context.Context,
 	runID string,
@@ -86,6 +89,7 @@ func (a *Agent) projectToolResult(
 	return toolResultProjection{result: projected}
 }
 
+// callOffloader 隔离 Offloader panic。
 func callOffloader(ctx context.Context, offloader artifact.Offloader, request artifact.Request) (decision artifact.Decision, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -95,6 +99,7 @@ func callOffloader(ctx context.Context, offloader artifact.Offloader, request ar
 	return offloader.Offload(ctx, request.Clone())
 }
 
+// artifactRunError 把 artifact.Error 映射为 RunError；体积超限归入 ErrorLimit。
 func artifactRunError(cause error) *RunError {
 	var artifactError *artifact.Error
 	if errors.As(cause, &artifactError) && artifactError.Code == artifact.ErrorPayloadLimit {

@@ -1,0 +1,16 @@
+{
+  "protocol_version": "tiggy.runtime.event.v1",
+  "id": "evt_model_legacy",
+  "run_id": "run_legacy",
+  "type": "model.call.started",
+  "sequence": 2,
+  "created_at": "2026-08-04T00:00:00Z",
+  "payload": {
+    "call_id": "call_legacy",
+    "model": {
+      "provider": "example",
+      "model": "example-chat"
+    },
+    "attempt": 1
+  }
+}

@@ -14,7 +14,7 @@ The generated clients that call Tiggy Manage Agent over HTTP/SSE remain separate
 
 ## Status
 
-P3 implementation is complete. The repository now provides provider-neutral contracts, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic Context/Memory fault injection. The current version is not yet production-ready.
+P3 implementation is complete. The repository now provides provider-neutral contracts, an optional OpenAI-compatible Adapter, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic fault evaluation. The current version is not yet production-ready.
 
 ## Module
 
@@ -44,6 +44,8 @@ artifact/ Versioned large Tool Result offload and opaque object references
 memory/   Scoped Recall/Observe contracts and bounded process-local adapters
 observe/  Structured logging, bounded metrics, and optional OpenTelemetry adapters
 record/   Privacy-aware integrity-linked Memory and JSONL Run journals
+provider/openai/ Optional standard-library OpenAI-compatible Model adapter
+evaluation/ Deterministic Runtime reliability and Compressor quality reports
 ```
 
 ## Run the Example
@@ -64,7 +66,7 @@ Requires Go 1.25.12 or later:
 make verify
 ```
 
-Verification includes formatting, dependency-boundary and license checks, `go vet`, unit tests, and race detection.
+Verification includes formatting, dependency-boundary and license checks, `go vet`, unit tests, race detection, and the deterministic Runtime reliability baseline. Run that baseline alone with `make eval-reliability`.
 
 Release metadata is audited separately because it includes owner-controlled decisions that must not block normal development:
 
@@ -90,12 +92,17 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [MCP Client semantics](./docs/mcp.md)
 - [Skill semantics](./docs/skill.md)
 - [Context Manager semantics](./docs/contextmanager.md)
+- [Context diagnostics](./docs/context-diagnostics.md)
 - [Artifact offload semantics](./docs/artifact.md)
 - [Memory Recall and Observe semantics](./docs/memory.md)
 - [Observation semantics](./docs/observe.md)
 - [Run Recorder semantics](./docs/record.md)
 - [Context and Memory fault injection](./docs/fault-injection.md)
 - [Agent test kit guide](./docs/agenttest.md)
+- [Live Provider contract verification](./docs/live-provider.md)
+- [OpenAI-compatible Provider Adapter](./docs/provider-openai.md)
+- [Runtime reliability evaluation](./docs/reliability-evaluation.md)
+- [Compressor quality evaluation](./docs/compression-evaluation.md)
 - [Built-in Tool semantics](./docs/builtin.md)
 - [Extraction and migration plan](./docs/migration.md)
 - [Roadmap](./docs/roadmap.md)
@@ -113,7 +120,10 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [ADR 0011: Memory quality contract](./docs/adr/0011-memory-quality-contract.md)
 - [ADR 0012: Read-only observation adapters](./docs/adr/0012-observation-adapters.md)
 - [ADR 0013: Versioned integrity-linked Run Recorder](./docs/adr/0013-run-recorder.md)
-- [ADR 0014: Deterministic Context and Memory fault injection](./docs/adr/0014-deterministic-fault-injection.md)
+- [ADR 0014: Deterministic Context/Memory fault injection](./docs/adr/0014-deterministic-fault-injection.md)
+- [ADR 0015: Bounded Provider context-length recovery](./docs/adr/0015-provider-context-length-recovery.md)
+- [ADR 0016: Deterministic Compressor quality evaluation](./docs/adr/0016-compressor-quality-evaluation.md)
+- [ADR 0017: Content-free Model Context diagnostic manifest](./docs/adr/0017-model-context-diagnostic-manifest.md)
 - [Compatibility changelog](./CHANGELOG.md)
 
 ## Relationship to Tiggy Manage Agent

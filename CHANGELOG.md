@@ -4,7 +4,22 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- Per-model-call stream budgets bound both the number of accepted Deltas and their cumulative UTF-8 string payload bytes before they enter Event Sinks or `Result.Events`.
+- OpenAI-compatible Provider verification now combines deterministic HTTP/SSE reliability fixtures with an opt-in live call that can safely reuse a TMA dotenv without importing TMA packages, starting infrastructure, logging credentials, or enabling external network calls in normal CI.
+- The optional standard-library `provider/openai` Adapter implements streaming text, Tool Call/Result mapping, Usage, request IDs, typed Provider failures, and caller-owned HTTP configuration without making Core depend on a vendor SDK.
+- A deterministic Runtime reliability baseline now evaluates terminal and State invariants, stable error classification, diagnostic evidence, and undeclared delegate replay across 13 process-local fault scenarios, with versioned JSON and Markdown reports.
+- The OpenAI-compatible Adapter now propagates bounded Provider request IDs on failures and classifies allowlisted quota, context-length, safety, authentication, permission, rate-limit, and model-availability error metadata without retaining Provider error messages.
+- An explicit `compress_retry` Model Failure action can recover once per Model Target from a Provider context-length rejection by structurally compressing the failed request view, replanning it, and consuming a bounded additional model call.
+- The opt-in `evaluation/compression` library runs application-owned Planners and Compressors against deterministic fact-source fixtures, structural/provenance checks, summary bounds, and post-compression budgets without retaining prompt or summary bodies in reports.
+- Every new `model.call.started` payload includes a fixed-size, content-free Context Manifest with final Request composition counts and byte totals for Call-correlated diagnostics.
+
+### Compatibility
+
+- Existing explicit `agent.Limits` values that predate the stream-budget fields remain valid: zero `MaxModelDeltasPerCall` and `MaxModelDeltaBytesPerCall` values receive conservative defaults, while negative values are rejected.
+- `CompressionRequest` and `context.compression.*` payloads now identify `budget_overflow` or `provider_context_length` as their Trigger; the latter is additive and disabled unless explicitly selected by Failure Policy. A missing Trigger remains compatible and is interpreted as the legacy `budget_overflow` path.
+- `ModelCallPayload.Context` is an additive optional field. New Runtime calls populate it; Event Protocol V1 recordings produced before this change remain valid without it.
 
 ## [0.1.0] - 2026-08-04
 

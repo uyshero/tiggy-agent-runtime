@@ -194,7 +194,7 @@ Tiggy Agent Runtime 更适合：
 
 Tiggy Agent Runtime 已完成 P0 到 P3 的工程实现，覆盖协议基础、可靠 Agent Loop、Toolkit 与执行环境、Context、Memory、Observability、Run Recorder 和 Fault Injection。
 
-但项目仍处于预发布阶段，尚未宣称生产可用。真实 Provider Adapter 和企业流程的端到端接入仍需验证；项目已采用 Apache-2.0 并建立私密安全报告渠道，首个版本仍需经过审核、Tag 和 Owner 发布授权。
+但项目仍处于 pre-v1 阶段，尚未宣称生产可用。仓库已有本地 `v0.1.0` 发布基线；当前 `Unreleased` 能力、真实 Provider Adapter 和企业流程的端到端接入仍需验证，后续公开版本仍必须经过审核并获得 Owner 发布授权。
 
 因此，当前最合适的定位是：
 

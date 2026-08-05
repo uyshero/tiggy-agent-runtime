@@ -15,9 +15,11 @@
 
 ## Execution and Failure
 
-The runtime executes model and tool calls sequentially until completion, cancellation, failure, or a configured limit. Current limits cover iterations, model calls, tool calls, cumulative tokens, per-call output tokens, and total duration.
+The runtime executes model and tool calls sequentially until completion, cancellation, failure, or a configured limit. Current limits cover iterations, model calls, tool calls, cumulative tokens, per-call output tokens, per-call streamed Delta count/bytes, and total duration.
 
 The total duration is propagated to model and tool calls through Context. The Event Sink is caller code and must return promptly or implement bounded I/O; the runtime cannot preempt a callback that blocks without returning.
+
+`MaxModelDeltasPerCall` and `MaxModelDeltaBytesPerCall` are checked before a Delta enters the Event Sink or `Result.Events`; the byte budget counts the UTF-8 bytes in all variable-length Delta string fields without copying their bodies. Fixed event-envelope overhead is bounded by the Delta count. Exceeding either budget fails the Run with `limit/max_model_deltas` or `limit/max_model_delta_bytes`. The first failure is latched, so a broken Provider Adapter that ignores the DeltaSink error cannot keep growing the diagnostic event trace. It may still occupy its own `Generate` call until it returns or honors Context cancellation. Runtime serializes concurrent callbacks and closes the Delta entry point when `Generate` returns, preventing late callbacks from changing the event sequence. Zero values for these two fields receive defaults so explicit `Limits` written before the fields existed remain valid; negative values are rejected.
 
 Tool failures have two classes:
 
@@ -42,6 +44,8 @@ Artifact offload applies only to successful Tool Results. Safe model-actionable 
 
 Memory Recall/Observe operations receive owned values and the Run Context. Ordinary Adapter failures degrade by default and may be configured as `fail_run`. Cancellation always cancels the Run; panic, invalid/cross-scope recall results, and recall-limit violations are fatal. Agent filters expired recalled Items before every model projection. Observe starts only after the final Assistant response and its completed Model Call event; a degraded Observe preserves the completed Result. Memory events expose active/expired counts and Namespace but no text, observed messages, expiry, provenance correlation, or Scope key.
 
+Every new `model.call.started` Event carries an optional content-free Context Manifest for the exact physical Provider Request. It records fixed aggregate Message/Role/Visibility/projection/Content/Tool Definition counts and bytes, including pre-compression and final Message counts. Older Protocol V1 Events may omit it. See [Context diagnostics](./context-diagnostics.md).
+
 ## Model Retry and Fallback
 
 The default failure policy is fail-fast and never retries implicitly. Applications that need transient-failure recovery can configure `TransientModelFailurePolicy` and ordered `Fallbacks`:
@@ -56,16 +60,19 @@ agent.Config{
         BaseDelay: 200 * time.Millisecond,
         MaxDelay: 2 * time.Second,
         EnableFallback: true,
+        EnableContextRecovery: true,
     },
 }
 ```
 
-- The built-in policy recovers only when the provider adapter explicitly sets `ProviderError.Retryable=true`.
+- The built-in policy retries ordinary failures only when the Provider Adapter explicitly sets `ProviderError.Retryable=true`.
+- `EnableContextRecovery` is a separate opt-in: `ErrorContextLength` may trigger one structurally safe compression and same-target retry when that target has both a Planner and Compressor.
 - A retry uses the same state and model target with a new Call ID. A fallback moves to the next explicitly configured model target.
 - Every physical attempt counts toward `MaxModelCalls`, so a custom policy cannot retry without bound.
 - Backoff responds to Context cancellation and stops and drains its timer.
 - `retry.scheduled` and `fallback.activated` record the failed call, target, reason, and delay.
 - A model may emit deltas before failing, so consumers must correlate attempts by Call ID.
+- A Provider Adapter must stop streaming when DeltaSink returns an error; Core still bounds retained Delta events when an Adapter violates this contract.
 - Tools are not retried automatically because the runtime cannot assume external side effects are repeatable.
 
 A custom `ModelFailurePolicy` must be concurrency-safe. Invalid decisions and panics are contained as `model_failure_policy_failed` without corrupting state.
@@ -74,7 +81,7 @@ Panics from Model, Tool, Memory, failure-policy, and Event Sink boundaries becom
 
 Context planning uses the same cancellation boundary. Counter/Planner failures are run-fatal because proceeding would invalidate the configured context guarantee. `context.prepare.started/prepared` are balanced on ready, overflow, error, and cancellation paths.
 
-On overflow, a configured Compressor gets one attempt, followed by mandatory replanning. Same-target retries reuse the compressed view; Fallback targets restart from full State with their own Planner and optional Compressor. Compression errors, invalid Decisions, cancellation, insufficient reduction, and Event Sink failures are fail-closed and emit a balanced `context.compression.started/completed|failed` operation before termination.
+On overflow, a configured Compressor gets one attempt, followed by mandatory replanning. Ordinary same-target retries reuse the compressed view; Fallback targets restart from full State with their own Planner and optional Compressor. When explicitly enabled, a Provider context-length rejection that escaped preflight may compress the failed request view once, replan it, and consume one more `MaxModelCalls` slot. A second rejection is not compressed again. Compression errors, invalid Decisions, cancellation, insufficient reduction, and Event Sink failures are fail-closed and emit a balanced `context.compression.started/completed|failed` operation before termination.
 
 ## Event Sink
 

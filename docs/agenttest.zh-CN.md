@@ -78,6 +78,8 @@ result.State.Messages         Runtime 保留的完整 Conversation State
 
 完整上下文可能包含 Prompt、Tool Result 或 Recall 数据，只应在受控测试中打印，不能把这种做法复制到生产日志。
 
+生产环境只诊断 Request 形态时，应从 `model.call.started` 解码可选的 `ModelCallPayload.Context` Manifest。它只包含固定的聚合计数和字节大小，不包含 Message ID 或正文。详见 [Context 诊断快照](./context-diagnostics.zh-CN.md)。
+
 ## Test Double 一览
 
 | API | 用途 |

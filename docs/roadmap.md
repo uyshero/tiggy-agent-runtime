@@ -45,6 +45,9 @@
 - [x] Token budget planner
 - [x] Semantics-preserving compression
 - [x] Compression provenance and fail-closed fallback
+- [x] Explicit bounded Provider context-length compression recovery
+- [x] Deterministic application-owned Compressor quality evaluation
+- [x] Content-free per-Model-Call Context diagnostic manifest
 - [x] Large Tool Result offload contract
 - [x] Memory recall and observe
 - [x] Noop and in-memory Memory implementations

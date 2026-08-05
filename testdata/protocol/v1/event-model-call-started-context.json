@@ -1,0 +1,39 @@
+{
+  "protocol_version": "tiggy.runtime.event.v1",
+  "id": "evt_model_1",
+  "run_id": "run_1",
+  "type": "model.call.started",
+  "sequence": 3,
+  "created_at": "2026-08-05T00:00:00Z",
+  "payload": {
+    "call_id": "call_1",
+    "model": {
+      "provider": "example",
+      "model": "example-chat"
+    },
+    "attempt": 1,
+    "context": {
+      "projected_message_count": 5,
+      "request_message_count": 3,
+      "system_message_count": 1,
+      "user_message_count": 1,
+      "assistant_message_count": 1,
+      "tool_message_count": 0,
+      "public_message_count": 2,
+      "internal_message_count": 1,
+      "recalled_memory_messages": 1,
+      "compression_summaries": 0,
+      "text_blocks": 3,
+      "text_bytes": 512,
+      "thinking_blocks": 1,
+      "thinking_bytes": 128,
+      "image_blocks": 1,
+      "tool_call_blocks": 1,
+      "tool_argument_bytes": 64,
+      "tool_result_blocks": 1,
+      "artifact_blocks": 1,
+      "tool_definition_count": 2,
+      "tool_definition_bytes": 987
+    }
+  }
+}

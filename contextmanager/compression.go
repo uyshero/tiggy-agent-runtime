@@ -34,15 +34,24 @@ type CompressionGroup struct {
 	Messages   []message.Message `json:"messages"`
 }
 
+// CompressionTrigger explains why Core is requesting a structural summary.
+type CompressionTrigger string
+
+const (
+	CompressionTriggerBudgetOverflow        CompressionTrigger = "budget_overflow"
+	CompressionTriggerProviderContextLength CompressionTrigger = "provider_context_length"
+)
+
 func (g CompressionGroup) Clone() CompressionGroup {
 	return CompressionGroup{StartIndex: g.StartIndex, Messages: message.CloneAll(g.Messages)}
 }
 
 // CompressionRequest contains only the inactive groups eligible for replacement.
 type CompressionRequest struct {
-	Model  model.Identity     `json:"model"`
-	Plan   Plan               `json:"plan"`
-	Groups []CompressionGroup `json:"groups"`
+	Model   model.Identity     `json:"model"`
+	Plan    Plan               `json:"plan"`
+	Trigger CompressionTrigger `json:"trigger,omitempty"`
+	Groups  []CompressionGroup `json:"groups"`
 }
 
 func (r CompressionRequest) Clone() CompressionRequest {
@@ -61,8 +70,20 @@ func (r CompressionRequest) Validate() error {
 	if err := r.Plan.Validate(); err != nil {
 		return fmt.Errorf("compression plan: %w", err)
 	}
-	if r.Plan.Model != r.Model || r.Plan.Fits || r.Plan.OverflowTokens <= 0 {
-		return fmt.Errorf("compression requires a matching overflow plan")
+	if r.Plan.Model != r.Model {
+		return fmt.Errorf("compression requires a matching plan")
+	}
+	switch r.effectiveTrigger() {
+	case CompressionTriggerBudgetOverflow:
+		if r.Plan.Fits || r.Plan.OverflowTokens <= 0 {
+			return fmt.Errorf("budget compression requires an overflow plan")
+		}
+	case CompressionTriggerProviderContextLength:
+		if !r.Plan.Fits || r.Plan.OverflowTokens != 0 {
+			return fmt.Errorf("Provider context-length recovery requires a fitting preflight plan")
+		}
+	default:
+		return fmt.Errorf("unsupported compression trigger %q", r.Trigger)
 	}
 	if len(r.Groups) == 0 {
 		return fmt.Errorf("compression has no eligible history groups")
@@ -85,6 +106,13 @@ func (r CompressionRequest) Validate() error {
 		nextIndex += len(group.Messages)
 	}
 	return nil
+}
+
+func (r CompressionRequest) effectiveTrigger() CompressionTrigger {
+	if r.Trigger == "" {
+		return CompressionTriggerBudgetOverflow
+	}
+	return r.Trigger
 }
 
 // CompressionDecision summarizes a positive prefix of eligible groups.
@@ -132,6 +160,16 @@ func (c Compression) Clone() Compression {
 // prefix that may be summarized. The latest turn, System messages, and any
 // group containing an unresolved Tool Call remain protected.
 func NewCompressionRequest(modelIdentity model.Identity, messages []message.Message, plan Plan) (CompressionRequest, error) {
+	return newCompressionRequest(modelIdentity, messages, plan, CompressionTriggerBudgetOverflow)
+}
+
+// NewProviderContextLengthCompressionRequest creates one structural recovery
+// request after the Provider rejects a request that passed local preflight.
+func NewProviderContextLengthCompressionRequest(modelIdentity model.Identity, messages []message.Message, plan Plan) (CompressionRequest, error) {
+	return newCompressionRequest(modelIdentity, messages, plan, CompressionTriggerProviderContextLength)
+}
+
+func newCompressionRequest(modelIdentity model.Identity, messages []message.Message, plan Plan, trigger CompressionTrigger) (CompressionRequest, error) {
 	if err := validateConversation(messages); err != nil {
 		return CompressionRequest{}, &Error{Code: ErrorInvalidRequest, Cause: err}
 	}
@@ -139,7 +177,7 @@ func NewCompressionRequest(modelIdentity model.Identity, messages []message.Mess
 	if err != nil {
 		return CompressionRequest{}, &Error{Code: ErrorInvalidRequest, Cause: err}
 	}
-	request := CompressionRequest{Model: modelIdentity, Plan: plan, Groups: groups}
+	request := CompressionRequest{Model: modelIdentity, Plan: plan, Trigger: trigger, Groups: groups}
 	if err := request.Validate(); err != nil {
 		return CompressionRequest{}, &Error{Code: ErrorInvalidRequest, Cause: err}
 	}

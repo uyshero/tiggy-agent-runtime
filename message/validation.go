@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const maxContentDepth = 4 // Content/ToolResult 嵌套深度上限
+const maxContentDepth = 4 // Content/ToolResult 嵌套深度上限，防止恶意深层嵌套
 
 // Validate 校验消息角色、可见性与全部 Content 块。
 func (m Message) Validate() error {
@@ -37,6 +37,8 @@ func (m Message) Validate() error {
 	return nil
 }
 
+// Validate 校验 ToolCall：ID/Name 非空，Arguments 必须是合法 JSON Object；
+// ArgumentsError 可额外记录 Provider 解析失败，但不能替代安全的占位 Arguments。
 func (c ToolCall) Validate() error {
 	if strings.TrimSpace(c.ID) == "" {
 		return fmt.Errorf("tool call id is required")

@@ -83,6 +83,27 @@ func TestCompressionProtectsUnresolvedToolCall(t *testing.T) {
 	}
 }
 
+func TestProviderContextLengthCompressionRequiresFittingPlan(t *testing.T) {
+	t.Parallel()
+
+	messages := compressionHistory()
+	fitting := fittingPlan(t)
+	request, err := contextmanager.NewProviderContextLengthCompressionRequest(validRequest().Model, messages, fitting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Trigger != contextmanager.CompressionTriggerProviderContextLength || request.Plan.OverflowTokens != 0 || !request.Plan.Fits {
+		t.Fatalf("recovery request = %#v", request)
+	}
+	if _, err := contextmanager.NewProviderContextLengthCompressionRequest(validRequest().Model, messages, overflowPlan(t)); err == nil {
+		t.Fatal("Provider recovery accepted an overflow Plan")
+	}
+	request.Trigger = "unsupported"
+	if err := request.Validate(); err == nil {
+		t.Fatal("CompressionRequest accepted an unsupported Trigger")
+	}
+}
+
 func compressionHistory() []message.Message {
 	return []message.Message{
 		{ID: "system_1", Role: message.RoleSystem, Visibility: message.VisibilityInternal, Content: []message.Content{{Type: message.ContentText, Text: "Be reliable."}}},
@@ -96,6 +117,16 @@ func compressionHistory() []message.Message {
 func overflowPlan(t *testing.T) contextmanager.Plan {
 	t.Helper()
 	planner := newPlanner(t, agenttest.FuncTokenCounter(func(_ context.Context, _ model.TokenRequest) (int64, error) { return 900, nil }))
+	plan, err := planner.Plan(context.Background(), validRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
+func fittingPlan(t *testing.T) contextmanager.Plan {
+	t.Helper()
+	planner := newPlanner(t, agenttest.FuncTokenCounter(func(_ context.Context, _ model.TokenRequest) (int64, error) { return 400, nil }))
 	plan, err := planner.Plan(context.Background(), validRequest())
 	if err != nil {
 		t.Fatal(err)
