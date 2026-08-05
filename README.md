@@ -72,7 +72,7 @@ Release metadata is audited separately because it includes owner-controlled deci
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.1.0
+make release-verify RELEASE_VERSION=v0.1.1
 ```
 
 See [Release readiness](./docs/release-readiness.md) for the current technical gates, blockers, and owner decisions. Passing the audit is necessary but does not authorize publication.

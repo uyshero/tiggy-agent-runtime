@@ -4,6 +4,8 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+## [0.1.1] - 2026-08-05
+
 ### Added
 
 - Per-model-call stream budgets bound both the number of accepted Deltas and their cumulative UTF-8 string payload bytes before they enter Event Sinks or `Result.Events`.

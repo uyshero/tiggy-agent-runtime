@@ -72,7 +72,7 @@ make verify
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.1.0
+make release-verify RELEASE_VERSION=v0.1.1
 ```
 
 当前技术门禁、阻塞项和 Owner 决策见[发布就绪清单](./docs/release-readiness.zh-CN.md)。审计通过是必要条件，但不代表已获得发布授权。
