@@ -39,6 +39,7 @@ builtin/  Bounded permission-aware tools supplied by the runtime
 command/  Bounded command contract and the opt-in local process adapter
 mcp/      Bounded MCP Tool discovery, calls, lifecycle, stdio, and HTTP
 skill/    Strict versioned Skill discovery and explicit immutable activation
+contextassembly/ Static instruction stack and dynamic-context boundary rendering
 contextmanager/ Token planning, semantic compression groups and validated summaries
 artifact/ Versioned large Tool Result offload and opaque object references
 memory/   Scoped Recall/Observe contracts and bounded process-local adapters
@@ -91,8 +92,10 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [Command Runner semantics](./docs/command.md)
 - [MCP Client semantics](./docs/mcp.md)
 - [Skill semantics](./docs/skill.md)
+- [Context Assembly and Instruction Stack](./docs/context-assembly.md)
 - [Context Manager semantics](./docs/contextmanager.md)
 - [Context diagnostics](./docs/context-diagnostics.md)
+- [Dynamic Capability Activation draft](./docs/dynamic-capability-activation.md)
 - [Artifact offload semantics](./docs/artifact.md)
 - [Memory Recall and Observe semantics](./docs/memory.md)
 - [Observation semantics](./docs/observe.md)
@@ -103,6 +106,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [OpenAI-compatible Provider Adapter](./docs/provider-openai.md)
 - [Runtime reliability evaluation](./docs/reliability-evaluation.md)
 - [Compressor quality evaluation](./docs/compression-evaluation.md)
+- [Progressive capability disclosure plan](./docs/progressive-disclosure.md)
 - [Built-in Tool semantics](./docs/builtin.md)
 - [Extraction and migration plan](./docs/migration.md)
 - [Roadmap](./docs/roadmap.md)
@@ -124,6 +128,8 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [ADR 0015: Bounded Provider context-length recovery](./docs/adr/0015-provider-context-length-recovery.md)
 - [ADR 0016: Deterministic Compressor quality evaluation](./docs/adr/0016-compressor-quality-evaluation.md)
 - [ADR 0017: Content-free Model Context diagnostic manifest](./docs/adr/0017-model-context-diagnostic-manifest.md)
+- [ADR 0018: Progressive capability disclosure](./docs/adr/0018-progressive-capability-disclosure.md)
+- [ADR 0019: Dynamic capability activation](./docs/adr/0019-dynamic-capability-activation.md)
 - [Compatibility changelog](./CHANGELOG.md)
 
 ## Relationship to Tiggy Manage Agent

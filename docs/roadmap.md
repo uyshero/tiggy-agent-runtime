@@ -43,6 +43,7 @@
 ## P3: Context, Memory, and Observability
 
 - [x] Token budget planner
+- [x] Context Assembly and Instruction Stack boundary
 - [x] Semantics-preserving compression
 - [x] Compression provenance and fail-closed fallback
 - [x] Explicit bounded Provider context-length compression recovery
@@ -69,3 +70,27 @@
 - generated OpenAPI clients.
 
 Deferred items require separate product requirements and architecture decisions. They are not implicit Core commitments.
+
+## Candidate: v0.1.2
+
+- [x] Static progressive capability disclosure using existing Toolkit Groups and immutable Run snapshots
+- [x] Deterministic zero/single/multi-Group schema exposure tests
+- [x] Schema byte accounting through immutable Toolkit Views and content-free Context Manifests
+- [x] Retry/Fallback tests proving that Tool exposure cannot expand silently
+- [x] Context Assembly and Instruction Stack boundary with fixed static segment kinds
+- [x] Instruction Stack aggregate and per-kind byte diagnostics in `model.call.started.context`
+- [x] Agent test-kit example and helper for content-free Instruction Stack budget assertions
+- [x] External consumer example focused only on asserting the exact exposed Tool set
+
+Dynamic activation during a running Task is intentionally deferred until a separate capability-transition protocol is accepted. See [Progressive capability disclosure](./progressive-disclosure.md), [Dynamic Capability Activation](./dynamic-capability-activation.md), [ADR 0018](./adr/0018-progressive-capability-disclosure.md), and [ADR 0019](./adr/0019-dynamic-capability-activation.md).
+
+## Draft: v0.2.0 Dynamic Capability Activation
+
+- [ ] Activation request/decision contract covering Tool, MCP, and Skill sources
+- [ ] Optional bounded catalog summaries without full Schema bodies or backend identifiers
+- [ ] Content-free activation lifecycle Events and snapshot/definition digest rules
+- [ ] Next-turn-only immutable snapshot transition
+- [ ] Optional suspension/resume path for application or human authorization
+- [ ] Retry/Fallback reconstruction tests for the same active capability set
+- [ ] MCP stale-catalog and reconnect safety tests
+- [ ] Skill instruction/resource provenance tests

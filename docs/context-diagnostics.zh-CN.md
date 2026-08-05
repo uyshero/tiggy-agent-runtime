@@ -18,10 +18,12 @@ for _, value := range result.Events {
         continue
     }
     snapshot := payload.Context
-    log.Printf("call=%s projected=%d request=%d summaries=%d memory=%d",
+    log.Printf("call=%s projected=%d request=%d instruction_stack=%d instruction_stack_bytes=%d summaries=%d memory=%d",
         payload.CallID,
         snapshot.ProjectedMessageCount,
         snapshot.RequestMessageCount,
+        snapshot.InstructionStackMessages,
+        snapshot.InstructionStackBytes,
         snapshot.CompressionSummaries,
         snapshot.RecalledMemoryMessages,
     )
@@ -33,6 +35,7 @@ for _, value := range result.Events {
 Manifest 包含：
 
 - 按 Role 和 Visibility 分类的 Message 数；
+- Instruction Stack Message 数、聚合文本字节数，以及固定内置类型的静态指令字节数；
 - Recall Memory Projection 与 Compression Summary Message 数；
 - Text、Thinking、Image、Tool Call、Tool Result、Artifact Block 数；
 - Text、Thinking/Signature 和 Tool Argument 的 UTF-8 聚合字节数；
@@ -56,7 +59,7 @@ Manifest 包含：
 
 ## 隐私与边界
 
-Manifest 不包含 Message ID、Prompt/Summary/Memory 正文、Tool Name、Tool 参数/结果、Tool Schema Body、Artifact Object ID、Memory Item ID、Scope Key 或 Parameters。字段数量不会随对话长度增长；字节计数使用饱和算术。
+Manifest 不包含 Message ID、Prompt/Summary/Memory 正文、Tool Name、Tool 参数/结果、Tool Schema Body、Artifact Object ID、Memory Item ID、Scope Key 或 Parameters。它只记录是否存在 Instruction Stack Message、聚合文本字节大小，以及固定内置类型的字节总量；不记录静态指令正文、Segment Source、Skill 名称或自定义 Kind 名称。字段数量不会随对话长度增长；字节计数使用饱和算术。
 
 `record.SafeSanitizer` 保留已审查的 Manifest。`observe.LogSink` 只在现有 Model Call 日志级别写入选定聚合字段。Metrics 不把这些数值作为维度，避免产生高基数时间序列。
 

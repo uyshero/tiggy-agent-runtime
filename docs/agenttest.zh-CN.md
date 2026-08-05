@@ -65,6 +65,27 @@ agenttest.ModelStep{
 }
 ```
 
+同一个回调也可以测试静态渐进式暴露。先配置 `agent.Config.ToolGroups`，再断言模型实际可见的 Tool Definition：
+
+```go
+agenttest.ModelStep{
+    Assert: func(request model.Request) error {
+        got := make([]string, len(request.Tools))
+        for index, definition := range request.Tools {
+            got[index] = definition.Name
+        }
+        want := []string{"crm.lookup_customer", "kb.search"}
+        if !reflect.DeepEqual(got, want) {
+            return fmt.Errorf("model-visible tools = %v, want %v", got, want)
+        }
+        return nil
+    },
+    Response: response,
+}
+```
+
+参与编译的 `TestConsumerSelectsToolGroupsBeforeRun` 示例会把 Tool 注册到多个 Group，只选择 `customer_read` 和 `knowledge_read`，并证明具备写能力的 Tool 不会发送给模型。
+
 下面两份数据含义不同：
 
 ```text
@@ -79,6 +100,49 @@ result.State.Messages         Runtime 保留的完整 Conversation State
 完整上下文可能包含 Prompt、Tool Result 或 Recall 数据，只应在受控测试中打印，不能把这种做法复制到生产日志。
 
 生产环境只诊断 Request 形态时，应从 `model.call.started` 解码可选的 `ModelCallPayload.Context` Manifest。它只包含固定的聚合计数和字节大小，不包含 Message ID 或正文。详见 [Context 诊断快照](./context-diagnostics.zh-CN.md)。
+
+```go
+for _, value := range trace.Events() {
+    if value.Type != event.ModelCallStarted {
+        continue
+    }
+    payload, err := agenttest.DecodePayload[event.ModelCallPayload](value)
+    if err != nil || payload.Context == nil {
+        t.Fatal(err)
+    }
+    snapshot := payload.Context
+    t.Logf(
+        "instruction stack bytes: total=%d system=%d project=%d task_rule=%d policy=%d knowledge=%d skill=%d",
+        snapshot.InstructionStackBytes,
+        snapshot.InstructionStackSystemPromptBytes,
+        snapshot.InstructionStackProjectBytes,
+        snapshot.InstructionStackTaskRuleBytes,
+        snapshot.InstructionStackPolicyBytes,
+        snapshot.InstructionStackKnowledgeBytes,
+        snapshot.InstructionStackSkillBytes,
+    )
+}
+```
+
+和 `ScriptedModel.Calls()` 不同，这个 Manifest 可以用于普通诊断日志，因为它不包含 Prompt 正文、Tool Schema、Message ID、Memory 内容、Skill 名称或 Segment Source。完整可编译示例见 [examples/agenttest-basic/agent_test.go](../examples/agenttest-basic/agent_test.go) 中的 `TestInspectInstructionStackContextManifest`。
+
+如果希望静态指令超过约定预算时让测试失败，可以使用 `ValidateInstructionStackBudget`：
+
+```go
+if err := agenttest.ValidateInstructionStackBudget(trace.Events(), agenttest.InstructionStackBudget{
+    MaxBytes:             8_000,
+    MaxSystemPromptBytes: 1_000,
+    MaxProjectBytes:      2_000,
+    MaxTaskRuleBytes:     1_000,
+    MaxPolicyBytes:       1_000,
+    MaxKnowledgeBytes:    2_000,
+    MaxSkillBytes:        2_000,
+}); err != nil {
+    t.Fatal(err)
+}
+```
+
+字段为 0 表示不限制该项。Helper 会检查 Trace 中每个 `model.call.started` Manifest；如果 Manifest 缺失、非法，或超过任一配置上限，则返回 Error。它不会读取模型 Request 正文。
 
 ## Test Double 一览
 
@@ -95,6 +159,7 @@ result.State.Messages         Runtime 保留的完整 Conversation State
 | `StepClock` | 每次调用按固定 Duration 前进的稳定时间 |
 | `Trace` | 通过 `Trace.Sink` 并发安全地捕获 Event |
 | `ValidateTrace` | 校验生命周期、配对、Sequence、Parent 和 Terminal Invariant |
+| `ValidateInstructionStackBudget` | 不含正文的静态指令字节预算门禁 |
 | `EventTypes` / `DecodePayload` | 不手写 JSON 解析的定向 Event 断言 |
 
 `ScriptedModel.Assert`、`ScriptedModel.Calls`、`FuncMemory`、`FuncTool` 参数以及 Context/Artifact 函数适配器会复制各自拥有的边界值。`FuncModel` 刻意保持为原始 `model.Model` 回调，不额外复制；其实现必须遵守正常的 Model 所有权契约。
@@ -108,6 +173,7 @@ result.State.Messages         Runtime 保留的完整 Conversation State
 - 下一次 Model Request 是否包含预期 Tool Result、Recall Memory 或压缩后的 Context；
 - 直接检查 State 时执行 `result.State.ValidateComplete()`；
 - 执行 `agenttest.ValidateTrace(result.Events)` 或校验 `Trace` 捕获的 Events；
+- 静态指令膨胀属于回归风险时，执行 `agenttest.ValidateInstructionStackBudget`；
 - 场景涉及 Retry、Compression、Memory 或 Artifact 时，检查对应的强类型 Event Payload。
 
 使用 `DecodePayload[T]` 检查强类型 Payload：

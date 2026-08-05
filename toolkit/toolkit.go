@@ -184,6 +184,21 @@ func (v View) Definitions() []model.ToolDefinition {
 	return values
 }
 
+// DefinitionBytes returns a content-free byte count for the model-visible Tool
+// contracts in this View. It is intended for diagnostics and budget tests; it
+// does not rewrite or summarize Schema bodies.
+func (v View) DefinitionBytes() int64 {
+	var total int64
+	for _, definition := range v.definitions {
+		total += int64(len(definition.Name))
+		total += int64(len(definition.Description))
+		total += int64(len(definition.InputSchema))
+		total += int64(len(definition.OutputSchema))
+		total += int64(len(definition.ConcurrencyClass))
+	}
+	return total
+}
+
 // DefinitionDigest 对本 View 中模型可见 Tool 契约做指纹。
 // 审批续跑用它拒绝「挂起后 Toolkit 定义已变」的 Resume。
 func (v View) DefinitionDigest(name string) (string, bool) {

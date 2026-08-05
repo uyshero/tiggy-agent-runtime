@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/uyshero/tiggy-agent-runtime/approval"
+	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/event"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
@@ -197,10 +198,12 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 		}
 		nextState := state.Clone()
 		// 首轮且配置了 SystemPrompt/Skill 指令时，先插入内部 System 消息。
-		if prompt := a.systemPrompt(); len(nextState.Messages) == 0 && prompt != "" {
+		if prompt, metadata, err := a.systemPrompt(); err != nil {
+			return finish(StatusFailed, "invalid_instruction_stack", &RunError{Class: ErrorInternal, Code: "invalid_instruction_stack", SafeMessage: "The Agent could not assemble its instruction stack.", Cause: err}, nil)
+		} else if len(nextState.Messages) == 0 && prompt != "" {
 			nextState.Messages = append(nextState.Messages, message.Message{
 				ID: a.config.IDs("msg"), Role: message.RoleSystem, Visibility: message.VisibilityInternal,
-				Content: []message.Content{{Type: message.ContentText, Text: prompt}},
+				Content: []message.Content{{Type: message.ContentText, Text: prompt}}, Metadata: metadata,
 			})
 		}
 		turnStart = len(nextState.Messages) // User 消息即将写入的位置
@@ -641,16 +644,22 @@ func (a *Agent) toolView() (toolkit.View, error) {
 	return a.config.Toolkit.SnapshotGroups(groups...)
 }
 
-// systemPrompt 合并配置 SystemPrompt 与已激活 Skill 指令。
-func (a *Agent) systemPrompt() string {
-	active := a.config.Skills.SystemInstructions()
-	if active == "" {
-		return a.config.SystemPrompt
+// systemPrompt 组装静态 InstructionStack，并在正文中保留动态上下文边界。
+func (a *Agent) systemPrompt() (string, json.RawMessage, error) {
+	segments := []contextassembly.Segment{
+		contextassembly.StaticSegment(contextassembly.KindSystemPrompt, "agent.config.system_prompt", a.config.SystemPrompt),
 	}
-	if a.config.SystemPrompt == "" {
-		return active
+	segments = append(segments, a.config.Instructions...)
+	segments = append(segments, contextassembly.StaticSegment(contextassembly.KindSkill, "agent.config.skills", a.config.Skills.SystemInstructions()))
+	prompt, metadata, err := contextassembly.Render(segments)
+	if err != nil || prompt == "" {
+		return prompt, nil, err
 	}
-	return a.config.SystemPrompt + "\n\n" + active
+	encoded, err := contextassembly.MetadataJSON(metadata)
+	if err != nil {
+		return "", nil, err
+	}
+	return prompt, encoded, nil
 }
 
 // runStartedPayload 构造 run.started：Agent 名、ToolGroups、已激活 Skill、续跑 ID。

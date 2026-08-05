@@ -18,10 +18,12 @@ for _, value := range result.Events {
         continue
     }
     snapshot := payload.Context
-    log.Printf("call=%s projected=%d request=%d summaries=%d memory=%d",
+    log.Printf("call=%s projected=%d request=%d instruction_stack=%d instruction_stack_bytes=%d summaries=%d memory=%d",
         payload.CallID,
         snapshot.ProjectedMessageCount,
         snapshot.RequestMessageCount,
+        snapshot.InstructionStackMessages,
+        snapshot.InstructionStackBytes,
         snapshot.CompressionSummaries,
         snapshot.RecalledMemoryMessages,
     )
@@ -33,6 +35,7 @@ for _, value := range result.Events {
 The manifest contains:
 
 - Message counts by Role and Visibility;
+- Instruction Stack Message count, aggregate text bytes, and fixed per-kind static instruction bytes;
 - recalled-Memory projection and Compression-summary Message counts;
 - Text/Thinking/Image/Tool Call/Tool Result/Artifact block counts;
 - aggregate UTF-8 Text, Thinking/signature, and Tool argument bytes;
@@ -56,7 +59,7 @@ The snapshot does not claim that a semantic fact was selected or omitted correct
 
 ## Privacy And Bounds
 
-The manifest never contains Message IDs, Prompt/Summary/Memory text, Tool names, Tool arguments/results, Tool schema bodies, Artifact object IDs, Memory Item IDs, Scope keys, or Parameters. Its field count is constant regardless of conversation length. Byte totals use saturating arithmetic.
+The manifest never contains Message IDs, Prompt/Summary/Memory text, Tool names, Tool arguments/results, Tool schema bodies, Artifact object IDs, Memory Item IDs, Scope keys, or Parameters. It records only that an Instruction Stack message exists, its aggregate text byte size, and fixed built-in kind byte totals, not the static instruction bodies, segment sources, Skill names, or custom kind names. Its field count is constant regardless of conversation length. Byte totals use saturating arithmetic.
 
 `record.SafeSanitizer` retains the reviewed manifest. `observe.LogSink` writes only selected aggregate fields at the existing Model Call log level. Metrics do not use these values as dimensions, avoiding high-cardinality series.
 

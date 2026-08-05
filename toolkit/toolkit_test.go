@@ -16,6 +16,7 @@ import (
 
 type fakeTool struct {
 	name        string
+	description string
 	schema      json.RawMessage
 	concurrency model.ToolConcurrencyClass
 	fn          func(context.Context, json.RawMessage) (tool.Result, error)
@@ -26,7 +27,7 @@ func (f fakeTool) Definition() model.ToolDefinition {
 	if len(schema) == 0 {
 		schema = json.RawMessage(`{"type":"object"}`)
 	}
-	return model.ToolDefinition{Name: f.name, InputSchema: schema, ConcurrencyClass: f.concurrency}
+	return model.ToolDefinition{Name: f.name, Description: f.description, InputSchema: schema, ConcurrencyClass: f.concurrency}
 }
 
 func TestInputSchemaIsCompiledAndEnforced(t *testing.T) {
@@ -134,6 +135,82 @@ func TestNamespaceAndGroupSnapshots(t *testing.T) {
 	groups := kit.Groups()
 	if len(groups) != 2 || groups[0] != "customer" || groups[1] != "read" {
 		t.Fatalf("groups = %v", groups)
+	}
+}
+
+func TestSnapshotGroupsProjectsZeroOneAndManyGroups(t *testing.T) {
+	t.Parallel()
+
+	kit, err := toolkit.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	register := func(registration toolkit.Registration) {
+		t.Helper()
+		if err := kit.RegisterWith(registration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	register(toolkit.Registration{
+		Tool: fakeTool{
+			name:        "read",
+			description: "Read customer data.",
+			schema:      json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`),
+			fn:          func(context.Context, json.RawMessage) (tool.Result, error) { return tool.TextResult("read"), nil },
+		},
+		Namespace: "crm", Groups: []string{"read", "customer"},
+	})
+	register(toolkit.Registration{
+		Tool: fakeTool{
+			name:        "write",
+			description: "Write customer data with a deliberately larger schema.",
+			schema:      json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"value":{"type":"string"},"reason":{"type":"string"}},"required":["id","value","reason"],"additionalProperties":false}`),
+			fn:          func(context.Context, json.RawMessage) (tool.Result, error) { return tool.TextResult("write"), nil },
+		},
+		Namespace: "crm", Groups: []string{"write", "customer"},
+	})
+	register(toolkit.Registration{
+		Tool: fakeTool{
+			name:        "grep",
+			description: "Search local files.",
+			schema:      json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"],"additionalProperties":false}`),
+			fn:          func(context.Context, json.RawMessage) (tool.Result, error) { return tool.TextResult("grep"), nil },
+		},
+		Groups: []string{"search"},
+	})
+
+	empty, err := kit.SnapshotGroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definitions := empty.Definitions(); len(definitions) != 0 || empty.DefinitionBytes() != 0 {
+		t.Fatalf("empty group projection definitions=%#v bytes=%d", definitions, empty.DefinitionBytes())
+	}
+
+	read, err := kit.SnapshotGroups("read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDefinitionNames(t, read.Definitions(), "crm.read")
+
+	customer, err := kit.SnapshotGroups("customer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDefinitionNames(t, customer.Definitions(), "crm.read", "crm.write")
+
+	union, err := kit.SnapshotGroups("search", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDefinitionNames(t, union.Definitions(), "crm.read", "grep")
+
+	all := kit.Snapshot()
+	if !(read.DefinitionBytes() > 0 && read.DefinitionBytes() < all.DefinitionBytes()) {
+		t.Fatalf("schema byte projection read=%d all=%d", read.DefinitionBytes(), all.DefinitionBytes())
+	}
+	if customer.DefinitionBytes() <= read.DefinitionBytes() {
+		t.Fatalf("multi-group schema bytes=%d, want > single group %d", customer.DefinitionBytes(), read.DefinitionBytes())
 	}
 }
 
@@ -295,5 +372,17 @@ func TestCallReturnsArgumentsErrorToModel(t *testing.T) {
 	}
 	if called {
 		t.Fatal("tool executed despite provider argument parse error")
+	}
+}
+
+func assertDefinitionNames(t *testing.T, definitions []model.ToolDefinition, names ...string) {
+	t.Helper()
+	if len(definitions) != len(names) {
+		t.Fatalf("definition count = %d, want %d: %#v", len(definitions), len(names), definitions)
+	}
+	for index, name := range names {
+		if definitions[index].Name != name {
+			t.Fatalf("definition %d name = %q, want %q; all=%#v", index, definitions[index].Name, name, definitions)
+		}
 	}
 }

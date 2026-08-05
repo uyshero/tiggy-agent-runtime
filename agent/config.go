@@ -14,6 +14,7 @@ import (
 
 	"github.com/uyshero/tiggy-agent-runtime/approval"
 	"github.com/uyshero/tiggy-agent-runtime/artifact"
+	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/contextmanager"
 	"github.com/uyshero/tiggy-agent-runtime/memory"
 	"github.com/uyshero/tiggy-agent-runtime/model"
@@ -100,6 +101,9 @@ type Config struct {
 	Name string
 	// SystemPrompt 首轮写入内部 System 消息；可与 Skills 指令拼接。
 	SystemPrompt string
+	// Instructions 是应用注入的额外静态指令段，例如项目知识、任务规则和策略说明。
+	// 它们进入 InstructionStack 的动态上下文边界之上；动态证据不得从这里注入。
+	Instructions []contextassembly.Segment
 
 	// Model 主模型适配器（必填）；ModelIdentity 描述该绑定的供应商/型号。
 	Model         model.Model
@@ -159,6 +163,10 @@ func New(config Config) (*Agent, error) {
 	}
 	if err := config.ModelIdentity.Validate(); err != nil {
 		return nil, err
+	}
+	config.Instructions = contextassembly.CloneSegments(config.Instructions)
+	if _, _, err := contextassembly.Render(config.Instructions); err != nil {
+		return nil, fmt.Errorf("instructions: %w", err)
 	}
 
 	// ---- Fallback：拷贝切片，并与主模型的 Planner 配置保持一致 ----

@@ -6,7 +6,7 @@
 - `Run` starts with empty state. `Continue` accepts only complete state with no pending tool calls. `Resume` accepts only a validated approval Suspension and an exact set of decisions.
 - Each run copies input state, model requests, Toolkit definitions, and returned values so retained slices cannot mutate an active run.
 - The Toolkit is snapshotted at run start. Registrations made during a run affect later runs only.
-- Activated Skills are immutable Agent configuration. Their instructions enter only the initial System Message; `run.started` records name/version/digest provenance without content bodies.
+- Activated Skills are immutable Agent configuration. Their instructions enter only the initial Instruction Stack System Message with `metadata.kind=instruction_stack`; `run.started` records name/version/digest provenance without content bodies.
 - An optional per-model Context Planner runs before provider invocation. Overflow terminates before a Model Call; same-target retries reuse the unchanged Plan and Fallbacks use their own Planners.
 - An optional per-model Context Compressor may replace only Core-selected inactive history groups in the provider request view. Full State remains unchanged.
 - An optional Artifact Offloader runs after a successful Tool call and before its Result enters State. Offloaded State contains a digest-bound reference; the complete Result remains in the injected Store.

@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/uyshero/tiggy-agent-runtime/agent"
 	"github.com/uyshero/tiggy-agent-runtime/agenttest"
+	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/event"
 	"github.com/uyshero/tiggy-agent-runtime/memory"
 	"github.com/uyshero/tiggy-agent-runtime/message"
@@ -85,6 +87,52 @@ func TestMemoryRecallIsRequestOnlyAndObserveSeesCurrentTurn(t *testing.T) {
 	observeIndex := eventTypeIndex(result.Events, event.MemoryObserveStarted)
 	if recallIndex < 0 || modelIndex <= recallIndex || modelCompletedIndex <= modelIndex || observeIndex <= modelCompletedIndex {
 		t.Fatalf("unexpected Memory lifecycle ordering: %v", agenttest.EventTypes(result.Events))
+	}
+	assertTerminalInvariants(t, result)
+}
+
+func TestInstructionStackKeepsMemoryBelowDynamicBoundary(t *testing.T) {
+	t.Parallel()
+
+	port := agenttest.FuncMemory{
+		RecallFunc: func(context.Context, memory.RecallRequest) (memory.RecallResult, error) {
+			return memory.RecallResult{Items: []memory.Item{{
+				ID: "memory-1", Scope: testMemoryScope, Text: "dynamic remembered evidence",
+				Provenance: memory.Provenance{Source: "profile"},
+			}}}, nil
+		},
+	}
+	script := agenttest.NewScriptedModel(agenttest.ModelStep{
+		Assert: func(request model.Request) error {
+			if len(request.Messages) != 3 {
+				return fmt.Errorf("message count = %d, want 3", len(request.Messages))
+			}
+			stack := request.Messages[0]
+			if stack.Role != message.RoleSystem || !strings.Contains(stack.Content[0].Text, contextassembly.DynamicBoundary) {
+				return fmt.Errorf("first message is not an instruction stack: %#v", stack)
+			}
+			var metadata contextassembly.Metadata
+			if err := json.Unmarshal(stack.Metadata, &metadata); err != nil {
+				return err
+			}
+			if metadata.Kind != contextassembly.MetadataKindInstructionStack {
+				return fmt.Errorf("instruction metadata = %#v", metadata)
+			}
+			recalled := request.Messages[1]
+			if recalled.Role != message.RoleSystem || !strings.Contains(recalled.Content[0].Text, "dynamic remembered evidence") {
+				return fmt.Errorf("second message is not recalled memory: %#v", recalled)
+			}
+			if strings.Index(stack.Content[0].Text, "Stable runtime rule.") > strings.Index(stack.Content[0].Text, contextassembly.DynamicBoundary) {
+				return fmt.Errorf("static rule appears below dynamic boundary:\n%s", stack.Content[0].Text)
+			}
+			return nil
+		},
+		Response: textResponse("done"),
+	})
+	value := newMemoryAgent(t, script, port, memory.Options{}, "Stable runtime rule.")
+	result, err := value.Run(context.Background(), userMessage("hello"))
+	if err != nil || result.Status != agent.StatusCompleted {
+		t.Fatalf("result = %#v, error = %v", result, err)
 	}
 	assertTerminalInvariants(t, result)
 }

@@ -2,6 +2,7 @@ package event
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
@@ -56,34 +57,42 @@ type ModelCallPayload struct {
 // ModelContextPayload is a bounded, content-free manifest of the exact
 // Request view associated with model.call.started.
 type ModelContextPayload struct {
-	ProjectedMessageCount  int   `json:"projected_message_count"`
-	RequestMessageCount    int   `json:"request_message_count"`
-	SystemMessageCount     int   `json:"system_message_count"`
-	UserMessageCount       int   `json:"user_message_count"`
-	AssistantMessageCount  int   `json:"assistant_message_count"`
-	ToolMessageCount       int   `json:"tool_message_count"`
-	PublicMessageCount     int   `json:"public_message_count"`
-	InternalMessageCount   int   `json:"internal_message_count"`
-	RecalledMemoryMessages int   `json:"recalled_memory_messages"`
-	CompressionSummaries   int   `json:"compression_summaries"`
-	TextBlocks             int   `json:"text_blocks"`
-	TextBytes              int64 `json:"text_bytes"`
-	ThinkingBlocks         int   `json:"thinking_blocks"`
-	ThinkingBytes          int64 `json:"thinking_bytes"`
-	ImageBlocks            int   `json:"image_blocks"`
-	ToolCallBlocks         int   `json:"tool_call_blocks"`
-	ToolArgumentBytes      int64 `json:"tool_argument_bytes"`
-	ToolResultBlocks       int   `json:"tool_result_blocks"`
-	ArtifactBlocks         int   `json:"artifact_blocks"`
-	ToolDefinitionCount    int   `json:"tool_definition_count"`
-	ToolDefinitionBytes    int64 `json:"tool_definition_bytes"`
+	ProjectedMessageCount             int   `json:"projected_message_count"`
+	RequestMessageCount               int   `json:"request_message_count"`
+	SystemMessageCount                int   `json:"system_message_count"`
+	UserMessageCount                  int   `json:"user_message_count"`
+	AssistantMessageCount             int   `json:"assistant_message_count"`
+	ToolMessageCount                  int   `json:"tool_message_count"`
+	PublicMessageCount                int   `json:"public_message_count"`
+	InternalMessageCount              int   `json:"internal_message_count"`
+	InstructionStackMessages          int   `json:"instruction_stack_messages"`
+	InstructionStackBytes             int64 `json:"instruction_stack_bytes"`
+	InstructionStackSystemPromptBytes int64 `json:"instruction_stack_system_prompt_bytes"`
+	InstructionStackProjectBytes      int64 `json:"instruction_stack_project_bytes"`
+	InstructionStackTaskRuleBytes     int64 `json:"instruction_stack_task_rule_bytes"`
+	InstructionStackPolicyBytes       int64 `json:"instruction_stack_policy_bytes"`
+	InstructionStackKnowledgeBytes    int64 `json:"instruction_stack_knowledge_bytes"`
+	InstructionStackSkillBytes        int64 `json:"instruction_stack_skill_bytes"`
+	RecalledMemoryMessages            int   `json:"recalled_memory_messages"`
+	CompressionSummaries              int   `json:"compression_summaries"`
+	TextBlocks                        int   `json:"text_blocks"`
+	TextBytes                         int64 `json:"text_bytes"`
+	ThinkingBlocks                    int   `json:"thinking_blocks"`
+	ThinkingBytes                     int64 `json:"thinking_bytes"`
+	ImageBlocks                       int   `json:"image_blocks"`
+	ToolCallBlocks                    int   `json:"tool_call_blocks"`
+	ToolArgumentBytes                 int64 `json:"tool_argument_bytes"`
+	ToolResultBlocks                  int   `json:"tool_result_blocks"`
+	ArtifactBlocks                    int   `json:"artifact_blocks"`
+	ToolDefinitionCount               int   `json:"tool_definition_count"`
+	ToolDefinitionBytes               int64 `json:"tool_definition_bytes"`
 }
 
 func (p ModelContextPayload) Validate() error {
 	counts := []int{
 		p.ProjectedMessageCount, p.RequestMessageCount, p.SystemMessageCount, p.UserMessageCount,
 		p.AssistantMessageCount, p.ToolMessageCount, p.PublicMessageCount, p.InternalMessageCount,
-		p.RecalledMemoryMessages, p.CompressionSummaries, p.TextBlocks, p.ThinkingBlocks,
+		p.InstructionStackMessages, p.RecalledMemoryMessages, p.CompressionSummaries, p.TextBlocks, p.ThinkingBlocks,
 		p.ImageBlocks, p.ToolCallBlocks, p.ToolResultBlocks, p.ArtifactBlocks, p.ToolDefinitionCount,
 	}
 	for _, count := range counts {
@@ -100,20 +109,50 @@ func (p ModelContextPayload) Validate() error {
 	if p.PublicMessageCount+p.InternalMessageCount != p.RequestMessageCount {
 		return fmt.Errorf("model context visibility counts are inconsistent")
 	}
-	if p.RecalledMemoryMessages+p.CompressionSummaries > p.SystemMessageCount {
+	if p.InstructionStackMessages+p.RecalledMemoryMessages+p.CompressionSummaries > p.SystemMessageCount {
 		return fmt.Errorf("model context projection counts exceed System Messages")
 	}
 	blockCount := p.TextBlocks + p.ThinkingBlocks + p.ImageBlocks + p.ToolCallBlocks + p.ToolResultBlocks + p.ArtifactBlocks
 	if blockCount < p.RequestMessageCount {
 		return fmt.Errorf("model context Content block counts are inconsistent")
 	}
-	if p.TextBytes < 0 || p.ThinkingBytes < 0 || p.ToolArgumentBytes < 0 || p.ToolDefinitionBytes < 0 {
+	if p.InstructionStackBytes < 0 || p.InstructionStackSystemPromptBytes < 0 || p.InstructionStackProjectBytes < 0 ||
+		p.InstructionStackTaskRuleBytes < 0 || p.InstructionStackPolicyBytes < 0 || p.InstructionStackKnowledgeBytes < 0 ||
+		p.InstructionStackSkillBytes < 0 || p.TextBytes < 0 || p.ThinkingBytes < 0 || p.ToolArgumentBytes < 0 || p.ToolDefinitionBytes < 0 {
 		return fmt.Errorf("model context byte counts cannot be negative")
+	}
+	if p.InstructionStackMessages == 0 && p.InstructionStackBytes != 0 {
+		return fmt.Errorf("model context Instruction Stack byte counts are inconsistent")
+	}
+	instructionKindBytes, instructionKindBytesOverflow := sumByteCounts(
+		p.InstructionStackSystemPromptBytes,
+		p.InstructionStackProjectBytes,
+		p.InstructionStackTaskRuleBytes,
+		p.InstructionStackPolicyBytes,
+		p.InstructionStackKnowledgeBytes,
+		p.InstructionStackSkillBytes,
+	)
+	if p.InstructionStackMessages == 0 && instructionKindBytes != 0 {
+		return fmt.Errorf("model context Instruction Stack kind byte counts are inconsistent")
+	}
+	if instructionKindBytesOverflow || instructionKindBytes > p.InstructionStackBytes {
+		return fmt.Errorf("model context Instruction Stack kind bytes exceed Instruction Stack bytes")
 	}
 	if (p.ToolDefinitionCount == 0) != (p.ToolDefinitionBytes == 0) {
 		return fmt.Errorf("model context Tool Definition counts are inconsistent")
 	}
 	return nil
+}
+
+func sumByteCounts(values ...int64) (int64, bool) {
+	var total int64
+	for _, value := range values {
+		if value > math.MaxInt64-total {
+			return math.MaxInt64, true
+		}
+		total += value
+	}
+	return total, false
 }
 
 type ModelDeltaPayload struct {

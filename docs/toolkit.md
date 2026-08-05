@@ -14,7 +14,9 @@ kit.RegisterWith(toolkit.Registration{
 
 If the Tool's original name is `lookup`, its model-visible name is `crm.lookup`. Names and namespaces are bounded ASCII identifiers containing letters, digits, `_`, `-`, and `.` with no empty dot-separated segments.
 
-Groups are capability projections and do not enter the Tool Call protocol. `SnapshotGroups` returns the union of requested groups and rejects unknown groups. `agent.Config.ToolGroups` limits one Agent to the selected tools.
+Groups are capability projections and do not enter the Tool Call protocol. `SnapshotGroups` returns the union of requested groups and rejects unknown groups; calling it with no groups returns an empty View. `agent.Config.ToolGroups` limits one Agent to the selected tools, while omitting it keeps the compatibility default of exposing all registered tools.
+
+`View.DefinitionBytes()` returns a content-free byte count for the Tool contracts in that immutable View. Use it for diagnostics and budget tests, not for rewriting or summarizing Schema bodies.
 
 MCP clients return ordinary `tool.Tool` adapters from `mcp.Client.Tools`. Register them with an explicit Namespace to prevent collisions between servers. Toolkit owns only its immutable registration snapshot; the application owns the MCP Client lifecycle and must rebuild registration after a catalog-changing reconnect.
 

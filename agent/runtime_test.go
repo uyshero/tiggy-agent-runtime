@@ -143,11 +143,14 @@ func TestAgentProjectsOnlyConfiguredToolGroups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	var selectedDefinitionBytes int64
 	script := agenttest.NewScriptedModel(agenttest.ModelStep{
 		Assert: func(request model.Request) error {
 			if len(request.Tools) != 1 || request.Tools[0].Name != "crm.lookup" {
 				return fmt.Errorf("projected tools = %#v", request.Tools)
 			}
+			selectedDefinitionBytes = int64(len(request.Tools[0].Name) + len(request.Tools[0].Description) +
+				len(request.Tools[0].InputSchema) + len(request.Tools[0].OutputSchema) + len(request.Tools[0].ConcurrencyClass))
 			return nil
 		},
 		Response: textResponse("done"),
@@ -166,6 +169,14 @@ func TestAgentProjectsOnlyConfiguredToolGroups(t *testing.T) {
 	result, err := value.Run(context.Background(), userMessage("lookup"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	started := findEvent(t, result.Events, event.ModelCallStarted)
+	payload, err := agenttest.DecodePayload[event.ModelCallPayload](started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Context == nil || payload.Context.ToolDefinitionCount != 1 || payload.Context.ToolDefinitionBytes != selectedDefinitionBytes {
+		t.Fatalf("model context tool manifest = %#v, want count=1 bytes=%d", payload.Context, selectedDefinitionBytes)
 	}
 	assertTerminalInvariants(t, result)
 }

@@ -39,6 +39,7 @@ builtin/  Runtime 自带的有界、权限感知 Tool
 command/  有界命令协议和显式启用的本地进程适配器
 mcp/      有界 MCP Tool 发现、调用、生命周期、stdio 和 HTTP
 skill/    严格版本化 Skill 发现和显式不可变激活
+contextassembly/ 静态 Instruction Stack 和动态上下文边界渲染
 contextmanager/ Token Planning、语义压缩分组和可校验摘要替换
 artifact/ 版本化大型 Tool Result Offload 和 opaque Object Reference
 memory/   Scoped Recall/Observe 协议和有界进程内 Adapter
@@ -92,8 +93,10 @@ make release-verify RELEASE_VERSION=v0.1.1
 - [Command Runner 语义](./docs/command.zh-CN.md)
 - [MCP Client 语义](./docs/mcp.zh-CN.md)
 - [Skill 语义](./docs/skill.zh-CN.md)
+- [Context Assembly 与 Instruction Stack](./docs/context-assembly.zh-CN.md)
 - [Context Manager 语义](./docs/contextmanager.zh-CN.md)
 - [Context 诊断快照](./docs/context-diagnostics.zh-CN.md)
+- [动态能力激活草案](./docs/dynamic-capability-activation.zh-CN.md)
 - [Artifact Offload 语义](./docs/artifact.zh-CN.md)
 - [Memory Recall 与 Observe 语义](./docs/memory.zh-CN.md)
 - [可观测性语义](./docs/observe.zh-CN.md)
@@ -104,6 +107,7 @@ make release-verify RELEASE_VERSION=v0.1.1
 - [OpenAI-compatible Provider Adapter](./docs/provider-openai.zh-CN.md)
 - [Runtime 可靠性评测](./docs/reliability-evaluation.zh-CN.md)
 - [Compressor 质量评测](./docs/compression-evaluation.zh-CN.md)
+- [渐进式能力暴露改进方案](./docs/progressive-disclosure.zh-CN.md)
 - [内置 Tool 语义](./docs/builtin.zh-CN.md)
 - [提取与迁移计划](./docs/migration.md)
 - [路线图](./docs/roadmap.md)
@@ -125,6 +129,8 @@ make release-verify RELEASE_VERSION=v0.1.1
 - [ADR 0015：有界 Provider Context Length 恢复](./docs/adr/0015-provider-context-length-recovery.md)
 - [ADR 0016：确定性 Compressor 质量评测](./docs/adr/0016-compressor-quality-evaluation.md)
 - [ADR 0017：无正文 Model Context 诊断 Manifest](./docs/adr/0017-model-context-diagnostic-manifest.md)
+- [ADR 0018：渐进式能力暴露](./docs/adr/0018-progressive-capability-disclosure.md)
+- [ADR 0019：动态能力激活](./docs/adr/0019-dynamic-capability-activation.md)
 - [兼容性变更记录](./CHANGELOG.md)
 
 ## 与 Tiggy Manage Agent 的关系

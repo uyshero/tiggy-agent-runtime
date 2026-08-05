@@ -14,7 +14,9 @@ kit.RegisterWith(toolkit.Registration{
 
 示例 Tool 原名为 `lookup` 时，模型可见名称为 `crm.lookup`。Name 和 Namespace 使用由字母、数字、`_`、`-`、`.` 组成的有界 ASCII 名称；`.` 分隔的 Segment 不能为空。
 
-Group 不进入 Tool Call 协议，只控制能力投影。`SnapshotGroups` 返回多个 Group 的并集并拒绝未知 Group。`agent.Config.ToolGroups` 让一个 Agent 只向模型暴露选中的工具。
+Group 不进入 Tool Call 协议，只控制能力投影。`SnapshotGroups` 返回多个 Group 的并集并拒绝未知 Group；不传 Group 时返回空 View。`agent.Config.ToolGroups` 让一个 Agent 只向模型暴露选中的工具；省略该字段时保持兼容默认值，暴露全部已注册工具。
+
+`View.DefinitionBytes()` 返回该不可变 View 中 Tool 契约的无正文聚合字节数。它用于诊断和预算测试，不用于改写或摘要 Schema 正文。
 
 MCP Client 通过 `mcp.Client.Tools` 返回普通 `tool.Tool` Adapter。注册时应显式使用 Namespace，避免不同 Server 的 Tool 冲突。Toolkit 只拥有不可变注册 Snapshot；MCP Client 生命周期属于应用，Catalog 变化的 Reconnect 后必须重建注册。
 

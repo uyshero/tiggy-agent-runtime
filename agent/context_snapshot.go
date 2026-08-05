@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 
+	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/event"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
@@ -36,6 +37,10 @@ func modelContextSnapshot(projectedCount int, messages []message.Message, tools 
 		}
 		if value.Role == message.RoleSystem && value.Visibility == message.VisibilityInternal {
 			switch projectionKind(value.Metadata) {
+			case contextassembly.MetadataKindInstructionStack:
+				payload.InstructionStackMessages++
+				addContentTextBytes(&payload.InstructionStackBytes, value.Content)
+				addInstructionStackKindBytes(payload, value.Metadata)
 			case "memory_recall":
 				payload.RecalledMemoryMessages++
 			case "context_summary":
@@ -86,6 +91,48 @@ func addContentSnapshot(payload *event.ModelContextPayload, content message.Cont
 	}
 }
 
+func addContentTextBytes(total *int64, contents []message.Content) {
+	for _, content := range contents {
+		switch content.Type {
+		case message.ContentText:
+			addBytes(total, len(content.Text))
+		case message.ContentToolResult:
+			if content.ToolResult != nil {
+				addContentTextBytes(total, content.ToolResult.Content)
+			}
+		}
+	}
+}
+
+func addInstructionStackKindBytes(payload *event.ModelContextPayload, metadata json.RawMessage) {
+	if len(metadata) == 0 {
+		return
+	}
+	var value contextassembly.Metadata
+	if json.Unmarshal(metadata, &value) != nil {
+		return
+	}
+	for _, entry := range value.StaticKindBytes {
+		if entry.Bytes <= 0 {
+			continue
+		}
+		switch entry.Kind {
+		case contextassembly.KindSystemPrompt:
+			addByteValue(&payload.InstructionStackSystemPromptBytes, entry.Bytes)
+		case contextassembly.KindProject:
+			addByteValue(&payload.InstructionStackProjectBytes, entry.Bytes)
+		case contextassembly.KindTaskRule:
+			addByteValue(&payload.InstructionStackTaskRuleBytes, entry.Bytes)
+		case contextassembly.KindPolicy:
+			addByteValue(&payload.InstructionStackPolicyBytes, entry.Bytes)
+		case contextassembly.KindKnowledge:
+			addByteValue(&payload.InstructionStackKnowledgeBytes, entry.Bytes)
+		case contextassembly.KindSkill:
+			addByteValue(&payload.InstructionStackSkillBytes, entry.Bytes)
+		}
+	}
+}
+
 func projectionKind(metadata json.RawMessage) string {
 	if len(metadata) == 0 {
 		return ""
@@ -103,7 +150,13 @@ func addBytes(total *int64, size int) {
 	if size <= 0 || *total == math.MaxInt64 {
 		return
 	}
-	value := int64(size)
+	addByteValue(total, int64(size))
+}
+
+func addByteValue(total *int64, value int64) {
+	if value <= 0 || *total == math.MaxInt64 {
+		return
+	}
 	if value > math.MaxInt64-*total {
 		*total = math.MaxInt64
 		return

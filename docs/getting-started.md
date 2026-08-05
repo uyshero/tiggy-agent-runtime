@@ -124,6 +124,13 @@ Set `agent.Config.ToolGroups` to project only selected groups. Input is validate
 runtime, err := agent.New(agent.Config{
     Name:          "support-agent",
     SystemPrompt:  "Use tools when evidence is required.",
+    Instructions: []contextassembly.Segment{
+        contextassembly.StaticSegment(
+            contextassembly.KindTaskRule,
+            "workflow",
+            "Answer from retrieved evidence before making changes.",
+        ),
+    },
     Model:         provider,
     ModelIdentity: model.Identity{Provider: "company", Model: "stable"},
     Toolkit:       kit,
@@ -143,6 +150,8 @@ input := message.Message{
 }
 result, err := runtime.Run(ctx, input)
 ```
+
+`SystemPrompt`, configured `Instructions`, and active Skills are rendered into one Instruction Stack above the dynamic-context boundary. Memory recall and compression summaries remain request-only dynamic context.
 
 `agent.New` validates and copies configuration. Tighten the default iteration, Model Call, Tool Call, token, and duration limits for the application. One Agent can be reused concurrently only when every injected dependency obeys its concurrency contract.
 

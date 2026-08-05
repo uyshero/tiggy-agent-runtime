@@ -67,7 +67,9 @@ func TestLogSinkEmitsContentFreeModelContextSnapshot(t *testing.T) {
 			ProjectedMessageCount: 3, RequestMessageCount: 2,
 			SystemMessageCount: 1, UserMessageCount: 1,
 			PublicMessageCount: 1, InternalMessageCount: 1,
-			CompressionSummaries: 1, TextBlocks: 2, TextBytes: 123,
+			InstructionStackMessages: 1, InstructionStackBytes: 177, CompressionSummaries: 1, TextBlocks: 2, TextBytes: 123,
+			InstructionStackSystemPromptBytes: 11, InstructionStackProjectBytes: 12, InstructionStackTaskRuleBytes: 13,
+			InstructionStackPolicyBytes: 14, InstructionStackKnowledgeBytes: 15, InstructionStackSkillBytes: 16,
 			ToolDefinitionCount: 1, ToolDefinitionBytes: 456,
 		},
 	})
@@ -77,7 +79,11 @@ func TestLogSinkEmitsContentFreeModelContextSnapshot(t *testing.T) {
 	logged := output.String()
 	for _, expected := range []string{
 		`"context.projected_message_count":3`, `"context.request_message_count":2`,
-		`"context.compression_summaries":1`, `"context.text_bytes":123`, `"context.tool_definition_bytes":456`,
+		`"context.instruction_stack_messages":1`, `"context.instruction_stack_bytes":177`, `"context.compression_summaries":1`,
+		`"context.instruction_stack_system_prompt_bytes":11`, `"context.instruction_stack_project_bytes":12`,
+		`"context.instruction_stack_task_rule_bytes":13`, `"context.instruction_stack_policy_bytes":14`,
+		`"context.instruction_stack_knowledge_bytes":15`, `"context.instruction_stack_skill_bytes":16`,
+		`"context.text_bytes":123`, `"context.tool_definition_bytes":456`,
 	} {
 		if !strings.Contains(logged, expected) {
 			t.Fatalf("log missing %s: %s", expected, logged)

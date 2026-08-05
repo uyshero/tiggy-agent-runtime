@@ -172,6 +172,13 @@ Agent 可以通过 `Config.ToolGroups` 只暴露指定 Group。Tool 输入在执
 runtime, err := agent.New(agent.Config{
     Name:          "support-agent",
     SystemPrompt:  "Use tools when evidence is required.",
+    Instructions: []contextassembly.Segment{
+        contextassembly.StaticSegment(
+            contextassembly.KindTaskRule,
+            "workflow",
+            "先基于检索到的证据回答，再执行变更。",
+        ),
+    },
     Model:         provider,
     ModelIdentity: model.Identity{
         Provider: "company",
@@ -184,6 +191,8 @@ if err != nil {
     return err
 }
 ```
+
+`SystemPrompt`、配置的 `Instructions` 和已激活 Skill 会进入同一个 Instruction Stack，并位于动态上下文边界之上。Memory Recall 和 Compression Summary 仍然是 request-only 动态上下文。
 
 `agent.New` 会立即校验配置，并保存不可变配置副本。默认 Limits 只是通用上限；实际应用应根据场景收紧迭代、Model Call、Tool Call、Token 和总时长。
 

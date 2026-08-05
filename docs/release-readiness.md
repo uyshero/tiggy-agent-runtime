@@ -19,7 +19,7 @@ These results are an engineering baseline, not a production-readiness claim. Dep
 
 ## Current Blockers
 
-The repository contains local `v0.1.0` and `v0.1.1` release tags. The audit does not prove that either tag is publicly available. The `v0.1.1` release is technically prepared locally, but public distribution remains blocked by owner-controlled decisions:
+The repository contains local `v0.1.0` and `v0.1.1` release tags. The audit does not prove that either tag is publicly available. The `v0.1.1` release is technically prepared locally, but public distribution remains blocked by owner-controlled decisions. Changes after that local baseline are accumulated under `Unreleased` as the `v0.1.2` candidate and are not a published release.
 
 - availability and ownership of the public module path `github.com/uyshero/tiggy-agent-runtime` still require owner confirmation;
 - delivery and monitoring of `security@tiggy.cloud` must be operationally confirmed;
@@ -33,7 +33,8 @@ Recorded decisions:
 
 - project license: Apache-2.0;
 - first tagged baseline: `v0.1.0`, dated 2026-08-04;
-- next local release: `v0.1.1`, dated 2026-08-05;
+- latest local release baseline: `v0.1.1`, dated 2026-08-05;
+- current unreleased candidate: `v0.1.2`;
 - security policy: latest `0.1.x`, private reports to `security@tiggy.cloud`.
 
 Before publication, the repository owner must still record:
@@ -68,7 +69,8 @@ The expected changelog heading is `## [0.1.1] - YYYY-MM-DD`. The command does no
 - [ ] public module path ownership and repository availability are confirmed;
 - [x] `SECURITY.md` contains the required supported-version, reporting, and contact contract;
 - [x] the local `v0.1.0` tag points at its release commit;
-- [x] current changes are assigned to `v0.1.1`;
+- [x] `v0.1.1` baseline changes are assigned to `v0.1.1`;
+- [x] post-`v0.1.1` changes are recorded under `Unreleased` as the `v0.1.2` candidate;
 - [x] the `v0.1.0` baseline is recorded under `## [0.1.0] - 2026-08-04`;
 - [x] `v0.1.1` is recorded under `## [0.1.1] - 2026-08-05`;
 - [x] `make release-verify RELEASE_VERSION=v0.1.1` passes at the tagged commit;

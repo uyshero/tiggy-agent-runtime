@@ -11,6 +11,7 @@ import (
 
 	"github.com/uyshero/tiggy-agent-runtime/agent"
 	"github.com/uyshero/tiggy-agent-runtime/agenttest"
+	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/event"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
@@ -44,6 +45,16 @@ func TestAgentProjectsActivatedSkillInstructionsAndTools(t *testing.T) {
 			prompt := request.Messages[0].Content[0].Text
 			if !strings.Contains(prompt, "Base instructions") || !strings.Contains(prompt, "Use the read capability") {
 				return fmt.Errorf("system prompt = %q", prompt)
+			}
+			if !strings.Contains(prompt, contextassembly.DynamicBoundary) {
+				return fmt.Errorf("instruction stack boundary missing from system prompt: %q", prompt)
+			}
+			var metadata contextassembly.Metadata
+			if err := json.Unmarshal(request.Messages[0].Metadata, &metadata); err != nil {
+				return err
+			}
+			if metadata.Kind != contextassembly.MetadataKindInstructionStack || !metadata.DynamicBoundary {
+				return fmt.Errorf("instruction stack metadata = %#v", metadata)
 			}
 			if len(request.Tools) != 1 || request.Tools[0].Name != "read" {
 				return fmt.Errorf("projected tools = %#v", request.Tools)
@@ -103,6 +114,65 @@ func TestActivatedSkillWithoutGroupsExposesNoTools(t *testing.T) {
 	}
 	if _, err := value.Run(context.Background(), userMessage("review")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAgentProjectsConfiguredInstructionSegments(t *testing.T) {
+	t.Parallel()
+
+	segments := []contextassembly.Segment{
+		contextassembly.StaticSegment(contextassembly.KindProject, "repo/AGENTS.md", "Use repository conventions."),
+		contextassembly.StaticSegment(contextassembly.KindTaskRule, "task", "Prefer focused changes."),
+		contextassembly.StaticSegment(contextassembly.KindPolicy, "security", "Do not expose secrets."),
+	}
+	script := agenttest.NewScriptedModel(agenttest.ModelStep{
+		Assert: func(request model.Request) error {
+			if len(request.Messages) != 2 {
+				return fmt.Errorf("messages = %#v", request.Messages)
+			}
+			prompt := request.Messages[0].Content[0].Text
+			for _, text := range []string{"Base instructions", "Use repository conventions.", "Prefer focused changes.", "Do not expose secrets."} {
+				if !strings.Contains(prompt, text) {
+					return fmt.Errorf("instruction stack missing %q:\n%s", text, prompt)
+				}
+			}
+			if strings.Contains(prompt, "mutated after New") {
+				return fmt.Errorf("instruction stack used caller-mutated segment:\n%s", prompt)
+			}
+			var metadata contextassembly.Metadata
+			if err := json.Unmarshal(request.Messages[0].Metadata, &metadata); err != nil {
+				return err
+			}
+			wantKinds := []string{
+				contextassembly.KindSystemPrompt,
+				contextassembly.KindProject,
+				contextassembly.KindTaskRule,
+				contextassembly.KindPolicy,
+			}
+			if len(metadata.StaticKinds) != len(wantKinds) {
+				return fmt.Errorf("static kinds = %#v", metadata.StaticKinds)
+			}
+			for index, want := range wantKinds {
+				if metadata.StaticKinds[index] != want {
+					return fmt.Errorf("static kinds = %#v", metadata.StaticKinds)
+				}
+			}
+			return nil
+		},
+		Response: textResponse("done"),
+	})
+	value, err := agent.New(agent.Config{
+		Name: "instruction-segments", SystemPrompt: "Base instructions", Instructions: segments,
+		Model: script, ModelIdentity: model.Identity{Provider: "test", Model: "scripted"},
+		IDs: agenttest.SequentialIDs(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segments[1].Text = "mutated after New"
+	result, err := value.Run(context.Background(), userMessage("review"))
+	if err != nil || result.Status != agent.StatusCompleted {
+		t.Fatalf("Run() = %#v, %v", result, err)
 	}
 }
 

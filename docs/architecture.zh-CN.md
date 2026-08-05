@@ -93,7 +93,7 @@ tiggy-manage-agent
 - Toolkit、MCP、Skills 和内置工具；
 - Root 约束的 SafeSpace 和可注入 FileSystem 接口；
 - 可注入的命令执行 Port 和显式选择的 Adapter；
-- Context Token 规划和语义安全压缩；
+- Context Assembly、Token 规划和语义安全压缩；
 - 通过注入 Store Port 实现大型 Tool Result Artifact Offload；
 - Memory Recall、Observe 和质量策略；
 - 结构化异常、Retry 和 Fallback；
@@ -159,7 +159,7 @@ Memory    跨 Run 或长对话保留的信息
 Artifact  不直接放入模型上下文的大型产物
 ```
 
-Context 规划必须计算 System Prompt、Tool Schema、输出预留、未完成 Tool 关系、近期消息、Recall Memory 和模型窗口。Compression 按语义组工作，不按任意字符区间截断。
+Context Assembly 先把应用 SystemPrompt 和显式激活 Skill 渲染为带动态边界的 Instruction Stack。Context 规划必须计算 System Prompt、Tool Schema、输出预留、未完成 Tool 关系、近期消息、Recall Memory 和模型窗口。Compression 按语义组工作，不按任意字符区间截断。
 
 `contextmanager.TokenPlanner` 通过注入的 Provider-aware 或显式 Estimated Counter 执行不可变预检。发生 Overflow 时，可选的 Model-specific `Compressor` 只接收 Core 构造的非活跃语义组。Core 保留 System Message、当前轮、未完成 Tool Call 和 Tool Call/Result 关系，自行构造摘要替换，并在 Provider Call 前重新规划一次。显式 Failure Policy 还可在 Fits 预检后 Provider 仍报 Context Length 时复用该边界一次，用于容纳 Tokenizer 或 Endpoint 漂移，但不伪造 Overflow 数值。Compression 只改变 Request View，不改写完整 Agent State。失败或压缩不足时采用 Fail-closed，而不是有损删除。
 

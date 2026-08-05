@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/agenttest"
 	"github.com/uyshero/tiggy-agent-runtime/event"
 	"github.com/uyshero/tiggy-agent-runtime/model"
+	"github.com/uyshero/tiggy-agent-runtime/tool"
 	"github.com/uyshero/tiggy-agent-runtime/toolkit"
 )
 
@@ -71,6 +73,80 @@ func TestFallbackModelActivatesAfterAttemptsExhausted(t *testing.T) {
 	}
 	if payload.From.Provider != "test" || payload.To.Provider != "backup" || payload.FallbackIndex != 1 {
 		t.Fatalf("fallback payload = %#v", payload)
+	}
+	assertTerminalInvariants(t, result)
+}
+
+func TestRetryAndFallbackKeepInitialToolGroupSnapshot(t *testing.T) {
+	t.Parallel()
+
+	kit, err := toolkit.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kit.RegisterWith(toolkit.Registration{
+		Tool: agenttest.FuncTool{
+			DefinitionValue: toolDefinition("lookup"),
+			ExecuteFunc:     func(context.Context, json.RawMessage) (tool.Result, error) { return tool.TextResult("lookup"), nil },
+		},
+		Namespace: "crm", Groups: []string{"read"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	addedDuringRun := false
+	assertOnlyInitialReadTool := func(request model.Request) error {
+		if len(request.Tools) != 1 || request.Tools[0].Name != "crm.lookup" {
+			return errors.New("tool group snapshot changed during retry/fallback")
+		}
+		if !addedDuringRun {
+			addedDuringRun = true
+			return kit.RegisterWith(toolkit.Registration{
+				Tool: agenttest.FuncTool{
+					DefinitionValue: toolDefinition("delete"),
+					ExecuteFunc:     func(context.Context, json.RawMessage) (tool.Result, error) { return tool.TextResult("delete"), nil },
+				},
+				Namespace: "crm", Groups: []string{"read"},
+			})
+		}
+		return nil
+	}
+	primary := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Assert: assertOnlyInitialReadTool, Err: providerFailure(model.ErrorUnavailable, true)},
+		agenttest.ModelStep{Assert: assertOnlyInitialReadTool, Err: providerFailure(model.ErrorUnavailable, true)},
+	)
+	fallback := agenttest.NewScriptedModel(agenttest.ModelStep{
+		Assert: assertOnlyInitialReadTool, Response: textResponse("from fallback"),
+	})
+	value, err := agent.New(agent.Config{
+		Name:          "stable-groups",
+		Model:         primary,
+		ModelIdentity: model.Identity{Provider: "test", Model: "primary"},
+		Fallbacks: []agent.ModelTarget{{
+			Model: fallback, Identity: model.Identity{Provider: "backup", Model: "secondary"},
+		}},
+		FailurePolicy: agent.TransientModelFailurePolicy{
+			MaxAttemptsPerTarget: 2,
+			EnableFallback:       true,
+		},
+		Toolkit:    kit,
+		ToolGroups: []string{"read"},
+		Limits:     agent.DefaultLimits(),
+		IDs:        agenttest.SequentialIDs(),
+		Now:        agenttest.StepClock(time.Unix(1_700_000_000, 0), time.Millisecond),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := value.Run(context.Background(), userMessage("lookup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(primary.Calls()) != 2 || len(fallback.Calls()) != 1 {
+		t.Fatalf("primary/fallback calls = %d/%d", len(primary.Calls()), len(fallback.Calls()))
+	}
+	if !addedDuringRun {
+		t.Fatal("test did not mutate Toolkit during the run")
 	}
 	assertTerminalInvariants(t, result)
 }

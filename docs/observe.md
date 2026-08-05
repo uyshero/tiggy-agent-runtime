@@ -21,7 +21,7 @@ New Event types are forward-compatible. LogSink records only their envelope, whi
 
 The Logger receives correlation IDs, Event type/sequence, bounded operation metadata, token counts, and safe `event.ErrorPayload` fields. It never logs the raw Event payload. In particular, Model Delta text, reasoning, Tool argument fragments, Message content, Artifact bodies, Memory text, Scope keys, and provenance IDs are excluded. Applications still own Logger redaction, output destination, retention, and access control.
 
-For `model.call.started`, LogSink includes selected fixed Context Manifest aggregates such as projected/final Message count, Memory/Compression projection count, Text bytes, Artifact blocks, and Tool Definition count/bytes. It never logs the corresponding bodies or IDs. See [Context diagnostics](./context-diagnostics.md).
+For `model.call.started`, LogSink includes selected fixed Context Manifest aggregates such as projected/final Message count, Instruction Stack count/bytes, fixed Instruction Stack kind bytes, Memory/Compression projection count, Text bytes, Artifact blocks, and Tool Definition count/bytes. It never logs the corresponding bodies or IDs. See [Context diagnostics](./context-diagnostics.md).
 
 ## Metrics
 

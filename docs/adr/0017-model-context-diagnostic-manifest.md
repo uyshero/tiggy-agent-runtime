@@ -11,8 +11,8 @@ Context Plan, Compression, Memory, Artifact, Retry, and Model Call Events each e
 
 1. Add optional `ModelCallPayload.Context` to `model.call.started` within Event Protocol V1.
 2. New Runtime calls populate it from the exact prepared Message/Tool view immediately before Provider invocation; old Events may omit it.
-3. Use fixed aggregate fields for pre-compression/final Message counts, Roles, Visibility, Runtime projection kinds, Content kinds/bytes, and Tool Definition count/bytes.
-4. Identify `memory_recall` and `context_summary` only from internal System Message Metadata; never retain their bodies or source identifiers.
+3. Use fixed aggregate fields for pre-compression/final Message counts, Roles, Visibility, Runtime projection kinds, Instruction Stack bytes, fixed built-in Instruction Stack kind bytes, Content kinds/bytes, and Tool Definition count/bytes.
+4. Identify `instruction_stack`, `memory_recall`, and `context_summary` only from internal System Message Metadata; never retain their bodies, source identifiers, Skill names, or custom kind names.
 5. Keep exact compressed source Message IDs in the existing bounded Compression outcome rather than duplicating per-Message manifests on every Model Call.
 6. Validate arithmetic relationships in `event.ModelContextPayload.Validate` and through `agenttest.ValidateTrace` when the optional field exists.
 7. Treat the payload as reviewed metadata in `record.SafeSanitizer`; expose selected values in structured logs but not as Metric dimensions.

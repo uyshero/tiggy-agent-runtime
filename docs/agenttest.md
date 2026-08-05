@@ -65,6 +65,31 @@ agenttest.ModelStep{
 }
 ```
 
+Use the same callback to test static progressive disclosure. Configure
+`agent.Config.ToolGroups`, then assert the exact Tool definitions visible to the
+model:
+
+```go
+agenttest.ModelStep{
+    Assert: func(request model.Request) error {
+        got := make([]string, len(request.Tools))
+        for index, definition := range request.Tools {
+            got[index] = definition.Name
+        }
+        want := []string{"crm.lookup_customer", "kb.search"}
+        if !reflect.DeepEqual(got, want) {
+            return fmt.Errorf("model-visible tools = %v, want %v", got, want)
+        }
+        return nil
+    },
+    Response: response,
+}
+```
+
+The compiled `TestConsumerSelectsToolGroupsBeforeRun` example registers Tools
+in several Groups, selects only `customer_read` and `knowledge_read`, and proves
+that a write-capable Tool is not sent to the Model.
+
 These values have different meanings:
 
 ```text
@@ -79,6 +104,57 @@ This captures the Tiggy-owned request delivered to a Provider Adapter. It cannot
 Full context can contain prompts, Tool Results, or recalled data. Print it only in controlled tests; do not copy this pattern into production logs.
 
 For production-safe shape diagnostics, decode the optional `ModelCallPayload.Context` manifest from `model.call.started`. It contains fixed aggregate counts and byte sizes but no Message IDs or bodies. See [Context diagnostics](./context-diagnostics.md).
+
+```go
+for _, value := range trace.Events() {
+    if value.Type != event.ModelCallStarted {
+        continue
+    }
+    payload, err := agenttest.DecodePayload[event.ModelCallPayload](value)
+    if err != nil || payload.Context == nil {
+        t.Fatal(err)
+    }
+    snapshot := payload.Context
+    t.Logf(
+        "instruction stack bytes: total=%d system=%d project=%d task_rule=%d policy=%d knowledge=%d skill=%d",
+        snapshot.InstructionStackBytes,
+        snapshot.InstructionStackSystemPromptBytes,
+        snapshot.InstructionStackProjectBytes,
+        snapshot.InstructionStackTaskRuleBytes,
+        snapshot.InstructionStackPolicyBytes,
+        snapshot.InstructionStackKnowledgeBytes,
+        snapshot.InstructionStackSkillBytes,
+    )
+}
+```
+
+Unlike `ScriptedModel.Calls()`, this manifest is safe for normal diagnostic
+logs because it does not contain Prompt text, Tool schemas, Message IDs, Memory
+content, Skill names, or segment sources. The complete compiled example is
+`TestInspectInstructionStackContextManifest` in
+[examples/agenttest-basic/agent_test.go](../examples/agenttest-basic/agent_test.go).
+
+Use `ValidateInstructionStackBudget` when a test should fail if static
+instructions grow past an agreed budget:
+
+```go
+if err := agenttest.ValidateInstructionStackBudget(trace.Events(), agenttest.InstructionStackBudget{
+    MaxBytes:             8_000,
+    MaxSystemPromptBytes: 1_000,
+    MaxProjectBytes:      2_000,
+    MaxTaskRuleBytes:     1_000,
+    MaxPolicyBytes:       1_000,
+    MaxKnowledgeBytes:    2_000,
+    MaxSkillBytes:        2_000,
+}); err != nil {
+    t.Fatal(err)
+}
+```
+
+Zero means "no limit" for that field. The helper checks every
+`model.call.started` manifest in the trace and returns an error if the manifest
+is missing, invalid, or exceeds any configured ceiling. It does not read the
+model Request body.
 
 ## Test Doubles
 
@@ -95,6 +171,7 @@ For production-safe shape diagnostics, decode the optional `ModelCallPayload.Con
 | `StepClock` | stable timestamps advanced by a fixed duration per call |
 | `Trace` | concurrency-safe Event capture through `Trace.Sink` |
 | `ValidateTrace` | lifecycle, pairing, sequence, parent, and terminal-invariant validation |
+| `ValidateInstructionStackBudget` | content-free static instruction byte-budget guard |
 | `EventTypes` / `DecodePayload` | focused Event assertions without ad hoc JSON handling |
 
 `ScriptedModel.Assert`, `ScriptedModel.Calls`, `FuncMemory`, `FuncTool` arguments, and the Context/Artifact function adapters clone their owned boundary values. `FuncModel` is intentionally a raw `model.Model` callback and adds no extra copy; its implementation must obey the normal Model ownership contract.
@@ -108,6 +185,7 @@ A useful Runtime test checks more than the returned text:
 - the next Model Request contains the expected Tool Result, recalled Memory, or compressed context;
 - `result.State.ValidateComplete()` when inspecting State directly;
 - `agenttest.ValidateTrace(result.Events)` or the Events captured by `Trace`;
+- `agenttest.ValidateInstructionStackBudget` when static instruction growth is a regression risk;
 - a specific typed Event payload when the scenario concerns retry, compression, Memory, or Artifact behavior.
 
 Use `DecodePayload[T]` for typed payload inspection:

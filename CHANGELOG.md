@@ -4,6 +4,25 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+### Added
+
+- Static progressive capability disclosure hardening now covers zero, single-Group, and multi-Group Toolkit projections, immutable per-Run Tool views, an external consumer example that asserts the exact model-visible Tool set, and Retry/Fallback scenarios that must not silently expand Tool exposure.
+- `toolkit.View.DefinitionBytes()` reports a content-free aggregate byte count for the Tool definitions visible in one immutable Toolkit view, enabling schema-budget diagnostics without rewriting or summarizing JSON Schema bodies.
+- Context Assembly now renders a model-visible Instruction Stack with a fixed dynamic-context boundary, static segment kinds, and content-free per-kind byte diagnostics for `system_prompt`, `project`, `task_rule`, `policy`, `knowledge`, and `skill`.
+- `agent.Config.Instructions` lets applications inject copied, validated static instruction segments above the dynamic-context boundary while keeping Memory Recall and Compression summaries request-only.
+- `model.call.started.context` now includes Instruction Stack message counts, total bytes, fixed built-in kind byte totals, and validation invariants for instruction-byte consistency.
+- `observe.LogSink` emits selected Instruction Stack aggregate byte diagnostics without logging prompt bodies, segment sources, Skill names, Tool schemas, Message IDs, or Memory content.
+- `agenttest.ValidateInstructionStackBudget` provides a content-free test guard for static instruction byte budgets using Context Manifests, and the compiled agenttest example demonstrates inspecting and budgeting Instruction Stack bytes.
+- Documentation now covers Context Assembly, progressive capability disclosure, Context diagnostics, Instruction Stack budget inspection, the static v0.1.2 disclosure plan, and a v0.2.0 Dynamic Capability Activation draft.
+
+### Compatibility
+
+- `ModelContextPayload` gains additive optional JSON fields for Instruction Stack diagnostics. Old Event Protocol V1 recordings without those fields remain valid.
+- Existing callers that omit `agent.Config.ToolGroups` keep the compatibility default of exposing all registered Tools. Progressive capability disclosure remains opt-in for this change set.
+- Custom instruction segment kinds may still render into the Instruction Stack, but Core exposes only fixed built-in kind byte fields in public Events and logs to avoid protocol and cardinality growth.
+- Bounded catalog-summary helpers are deferred to the future dynamic activation protocol rather than added as a v0.1.2 API.
+- Core still does not provide dynamic Tool activation during a running task, durable cross-process execution, database-backed State, or exactly-once external side effects.
+
 ## [0.1.1] - 2026-08-05
 
 ### Added

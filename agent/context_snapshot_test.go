@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
 )
@@ -12,7 +13,7 @@ func TestModelContextSnapshotCountsProjectionsAndContentWithoutBodies(t *testing
 	t.Parallel()
 
 	messages := []message.Message{
-		{ID: "system", Role: message.RoleSystem, Visibility: message.VisibilityInternal, Content: []message.Content{{Type: message.ContentText, Text: "a"}}},
+		{ID: "system", Role: message.RoleSystem, Visibility: message.VisibilityInternal, Content: []message.Content{{Type: message.ContentText, Text: "a"}}, Metadata: json.RawMessage(`{"kind":"instruction_stack","static_kind_bytes":[{"kind":"system_prompt","bytes":1}]}`)},
 		{ID: "memory", Role: message.RoleSystem, Visibility: message.VisibilityInternal, Content: []message.Content{{Type: message.ContentText, Text: "bb"}}, Metadata: json.RawMessage(`{"kind":"memory_recall"}`)},
 		{ID: "summary", Role: message.RoleSystem, Visibility: message.VisibilityInternal, Content: []message.Content{{Type: message.ContentText, Text: "ccc"}}, Metadata: json.RawMessage(`{"kind":"context_summary"}`)},
 		{ID: "assistant", Role: message.RoleAssistant, Visibility: message.VisibilityPublic, Content: []message.Content{
@@ -40,7 +41,9 @@ func TestModelContextSnapshotCountsProjectionsAndContentWithoutBodies(t *testing
 	if payload.RequestMessageCount != 6 || payload.SystemMessageCount != 3 || payload.UserMessageCount != 1 || payload.AssistantMessageCount != 1 || payload.ToolMessageCount != 1 {
 		t.Fatalf("role counts = %#v", payload)
 	}
-	if payload.InternalMessageCount != 4 || payload.PublicMessageCount != 2 || payload.RecalledMemoryMessages != 1 || payload.CompressionSummaries != 1 {
+	if payload.InternalMessageCount != 4 || payload.PublicMessageCount != 2 || payload.InstructionStackMessages != 1 ||
+		payload.InstructionStackBytes != 1 || payload.InstructionStackSystemPromptBytes != 1 ||
+		payload.RecalledMemoryMessages != 1 || payload.CompressionSummaries != 1 {
 		t.Fatalf("projection counts = %#v", payload)
 	}
 	if payload.TextBlocks != 5 || payload.TextBytes != 15 || payload.ThinkingBlocks != 1 || payload.ThinkingBytes != 3 || payload.ImageBlocks != 1 {
@@ -51,5 +54,21 @@ func TestModelContextSnapshotCountsProjectionsAndContentWithoutBodies(t *testing
 	}
 	if payload.ToolDefinitionCount != 1 || payload.ToolDefinitionBytes != 11 {
 		t.Fatalf("Tool Definition counts = %#v", payload)
+	}
+}
+
+func TestModelContextSnapshotUsesInstructionStackMetadataConstant(t *testing.T) {
+	t.Parallel()
+
+	payload := modelContextSnapshot(1, []message.Message{{
+		ID: "system", Role: message.RoleSystem, Visibility: message.VisibilityInternal,
+		Content:  []message.Content{{Type: message.ContentText, Text: "rules"}},
+		Metadata: json.RawMessage(`{"kind":"` + contextassembly.MetadataKindInstructionStack + `","static_kind_bytes":[{"kind":"system_prompt","bytes":5},{"kind":"project","bytes":7},{"kind":"task_rule","bytes":8},{"kind":"policy","bytes":6},{"kind":"knowledge","bytes":9},{"kind":"skill","bytes":4},{"kind":"custom","bytes":100}]}`),
+	}}, nil)
+	if payload.InstructionStackMessages != 1 || payload.InstructionStackBytes != 5 ||
+		payload.InstructionStackSystemPromptBytes != 5 || payload.InstructionStackProjectBytes != 7 ||
+		payload.InstructionStackTaskRuleBytes != 8 || payload.InstructionStackPolicyBytes != 6 ||
+		payload.InstructionStackKnowledgeBytes != 9 || payload.InstructionStackSkillBytes != 4 {
+		t.Fatalf("instruction stack projection = %#v", payload)
 	}
 }

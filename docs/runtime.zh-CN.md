@@ -6,7 +6,7 @@
 - `Run` 从空 State 开始，`Continue` 只接受没有未完成 Tool Call 的完整 State；`Resume` 只接受通过校验的审批 Suspension 和精确完整的决定集合。
 - 每次 Run 复制输入 State、Model Request、Toolkit 定义和返回结果；调用方不能通过保留 Slice 修改运行中状态。
 - Toolkit 在 Run 开始时创建快照。Run 期间注册的新工具只对后续 Run 可见。
-- 激活 Skill 是不可变 Agent 配置，其指令只进入初始 System Message；`run.started` 只记录 Name/Version/Digest 来源，不记录内容正文。
+- 激活 Skill 是不可变 Agent 配置，其指令只进入初始 Instruction Stack System Message，并带有 `metadata.kind=instruction_stack`；`run.started` 只记录 Name/Version/Digest 来源，不记录内容正文。
 - 可选的每 Model Context Planner 在 Provider Call 前运行。Overflow 在 Model Call 之前终止；同 Target Retry 复用未变 Plan，Fallback 使用自己的 Planner。
 - 可选的每 Model Context Compressor 只能在 Provider Request View 中替换 Core 选择的非活跃历史组，完整 State 保持不变。
 - 可选 Artifact Offloader 在成功 Tool Call 之后、Result 进入 State 之前运行。Offload 后 State 保存 Digest-bound Reference，完整 Result 保留在注入 Store 中。

@@ -95,7 +95,7 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - Toolkit, MCP, Skills and built-in tools;
 - root-confined SafeSpace and the injectable FileSystem interface;
 - an injectable command-execution Port and explicitly selected adapters;
-- context token planning and semantics-preserving compression;
+- context assembly, token planning, and semantics-preserving compression;
 - large Tool Result Artifact offload through an injected Store Port;
 - memory recall, observe and quality policies;
 - structured errors, retries and fallback decisions;
@@ -168,7 +168,7 @@ Memory    Information retained across runs or long conversations
 Artifact  Large outputs stored outside model context
 ```
 
-Context preparation accounts for the system prompt, tool schemas, output reserve, active tool relationships, recent messages, recalled memory, and model window. Compression operates on semantic groups rather than arbitrary character ranges.
+Context Assembly first renders the application SystemPrompt and explicitly activated Skills into an Instruction Stack with a dynamic-context boundary. Context preparation accounts for the system prompt, tool schemas, output reserve, active tool relationships, recent messages, recalled memory, and model window. Compression operates on semantic groups rather than arbitrary character ranges.
 
 `contextmanager.TokenPlanner` performs immutable preflight accounting through an injected provider-aware or explicitly estimated Counter. On overflow, an optional model-specific `Compressor` receives only Core-built inactive semantic groups. Core preserves System messages, the latest turn, unresolved Tool Calls, and Tool Call/Result relationships; constructs the summary replacement itself; and replans once before provider invocation. An explicit Failure Policy may use the same boundary once when a Provider reports Context Length after a fitting preflight, covering tokenizer or endpoint drift without inventing an overflow value. Compression changes only the request view, not full Agent State. Failure or insufficient reduction falls back to fail-closed rather than lossy deletion.
 
