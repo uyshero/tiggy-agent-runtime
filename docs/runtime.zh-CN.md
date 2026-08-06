@@ -92,4 +92,4 @@ Sink 失败语义：
 
 ## 当前非目标
 
-State 和 Event 只提供进程内正确性与诊断。审批 State 可以由应用持久化，但 Core 不承诺进程崩溃恢复、单恢复者协调、跨进程重放、外部副作用 Exactly-once 或数据库 Durable State Machine。
+State 和 Event 只提供进程内正确性与诊断。审批 State 可以由应用持久化，但 Core 不承诺进程崩溃恢复、单恢复者协调、跨进程重放、外部副作用 Exactly-once 或数据库 Durable State Machine。企业级落库和 Worker 状态机可参考 [Enterprise Runtime 持久化参考设计](./enterprise-runtime.zh-CN.md)。

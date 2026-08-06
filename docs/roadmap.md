@@ -81,6 +81,8 @@ Deferred items require separate product requirements and architecture decisions.
 - [x] Instruction Stack aggregate and per-kind byte diagnostics in `model.call.started.context`
 - [x] Agent test-kit example and helper for content-free Instruction Stack budget assertions
 - [x] External consumer example focused only on asserting the exact exposed Tool set
+- [x] Approval suspension/resume state-machine documentation
+- [x] Enterprise persistence reference that keeps durable Worker/database concerns outside Core
 
 Dynamic activation during a running Task is intentionally deferred until a separate capability-transition protocol is accepted. See [Progressive capability disclosure](./progressive-disclosure.md), [Dynamic Capability Activation](./dynamic-capability-activation.md), [ADR 0018](./adr/0018-progressive-capability-disclosure.md), and [ADR 0019](./adr/0019-dynamic-capability-activation.md).
 

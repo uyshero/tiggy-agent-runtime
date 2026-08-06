@@ -62,6 +62,33 @@ if result.Status == agent.StatusSuspended {
 
 批准后按模型原始顺序执行。拒绝的调用不会执行，而是产生不可重试的 `approval_rejected` Tool Result，模型随后可以继续推理；Policy 直接拒绝产生 `approval_denied`。Resume 不会再次调用 ApprovalPolicy。
 
+## 状态机视角
+
+`StatusSuspended` 不是把一个 goroutine 挂在那里等待，也不是整项任务失败。它表示“本次 Runtime 调用已经安全终止，并返回了一个可验证的续跑点”。
+
+```text
+Run / Continue
+  -> model emits one Tool batch
+  -> ApprovalPolicy classifies every call
+     -> all allow/deny: execute batch and continue loop
+     -> any require: store Suspension, emit approval.required, return run.suspended
+
+Resume
+  -> validate suspended State
+  -> validate exact approval resolutions
+  -> validate current Toolkit definition digests
+     -> mismatch or bad resolution: keep same Suspension and return suspended
+     -> valid: clear Suspension, emit approval.resolved, execute original batch
+```
+
+这个状态机有三个重要不变量：
+
+- 挂起前整批 Tool 都不能执行，否则审批只能保护部分副作用；
+- 恢复前必须验证 State、Resolution 和 Toolkit 契约，否则审批通过的可能不是原来的调用；
+- 决议错误或 Toolkit 不匹配时必须保留原 Suspension，否则用户没有机会修正并安全重试。
+
+因此，`run.suspended` 是一次调用的终态：本次调用不会继续偷偷执行；但它不是业务任务的终态：应用可以持久化 `Result.State`，收集人工决定，然后发起新的 `Resume` 调用。
+
 ## 完整性与事件
 
 Suspension 为每个调用绑定：

@@ -103,4 +103,6 @@ The optional `record.Recorder` is another strict Sink consumer. It writes each a
 State and events provide in-process correctness and diagnostics. Approval State
 is serializable for application-managed persistence, but Core does not promise
 crash recovery, single-resumer coordination, cross-process replay, exactly-once
-external side effects, or a database-backed durable state machine.
+external side effects, or a database-backed durable state machine. For one
+possible database and Worker design, see
+[Enterprise Runtime persistence reference](./enterprise-runtime.md).

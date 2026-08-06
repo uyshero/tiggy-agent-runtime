@@ -89,6 +89,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [SafeSpace semantics](./docs/safespace.md)
 - [Permission Policy semantics](./docs/permission.md)
 - [Tool approval and resume semantics](./docs/approval.md)
+- [Enterprise Runtime persistence reference](./docs/enterprise-runtime.md)
 - [Command Runner semantics](./docs/command.md)
 - [MCP Client semantics](./docs/mcp.md)
 - [Skill semantics](./docs/skill.md)

@@ -77,6 +77,41 @@ they receive a non-retryable `approval_rejected` Tool Result, after which the
 model can continue. Calls denied directly by Policy receive `approval_denied`.
 The ApprovalPolicy is not called again during Resume.
 
+## State Machine View
+
+`StatusSuspended` does not mean a goroutine is parked, and it is not task
+failure. It means the current Runtime invocation has terminated safely and
+returned a verifiable continuation point.
+
+```text
+Run / Continue
+  -> model emits one Tool batch
+  -> ApprovalPolicy classifies every call
+     -> all allow/deny: execute batch and continue loop
+     -> any require: store Suspension, emit approval.required, return run.suspended
+
+Resume
+  -> validate suspended State
+  -> validate exact approval resolutions
+  -> validate current Toolkit definition digests
+     -> mismatch or bad resolution: keep same Suspension and return suspended
+     -> valid: clear Suspension, emit approval.resolved, execute original batch
+```
+
+This state machine has three key invariants:
+
+- no Tool in the batch may execute before suspension, otherwise approval
+  protects only part of the side effect boundary;
+- Resume must validate State, Resolution, and Toolkit contracts, otherwise the
+  approved operation may not be the original call;
+- bad resolutions or Toolkit mismatches must preserve the original Suspension,
+  otherwise the caller cannot correct the input and retry safely.
+
+Therefore `run.suspended` is terminal for one invocation: that invocation will
+not continue executing in the background. It is not terminal for the business
+task: the application may persist `Result.State`, collect human decisions, and
+start a later `Resume` invocation.
+
 ## Integrity and Events
 
 Suspension binds each call to:

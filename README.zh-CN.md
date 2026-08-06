@@ -90,6 +90,7 @@ make release-verify RELEASE_VERSION=v0.1.1
 - [SafeSpace 语义](./docs/safespace.zh-CN.md)
 - [Permission Policy 语义](./docs/permission.zh-CN.md)
 - [Tool 人工审批与恢复语义](./docs/approval.zh-CN.md)
+- [Enterprise Runtime 持久化参考设计](./docs/enterprise-runtime.zh-CN.md)
 - [Command Runner 语义](./docs/command.zh-CN.md)
 - [MCP Client 语义](./docs/mcp.zh-CN.md)
 - [Skill 语义](./docs/skill.zh-CN.md)
