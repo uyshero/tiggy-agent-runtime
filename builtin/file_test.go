@@ -311,6 +311,7 @@ func TestConstructorsAndDefinitions(t *testing.T) {
 	read := newRead(t, builtin.ReadOptions{FileSystem: fileSystem})
 	write := newWrite(t, builtin.WriteOptions{FileSystem: fileSystem})
 	edit := newEdit(t, builtin.EditOptions{FileSystem: fileSystem})
+	todo := newTodo(t, builtin.TodoOptions{})
 	glob := newGlob(t, builtin.GlobOptions{FileSystem: fileSystem})
 	grep := newGrep(t, builtin.GrepOptions{FileSystem: fileSystem})
 	bash := newBash(t, builtin.BashOptions{
@@ -319,7 +320,7 @@ func TestConstructorsAndDefinitions(t *testing.T) {
 		}),
 	})
 	for _, definition := range []model.ToolDefinition{
-		read.Definition(), write.Definition(), edit.Definition(), glob.Definition(), grep.Definition(), bash.Definition(),
+		read.Definition(), write.Definition(), edit.Definition(), todo.Definition(), glob.Definition(), grep.Definition(), bash.Definition(),
 	} {
 		if err := definition.Validate(); err != nil {
 			t.Fatalf("Definition(%q) error = %v", definition.Name, err)
@@ -330,6 +331,9 @@ func TestConstructorsAndDefinitions(t *testing.T) {
 	}
 	if _, err := toolkit.New(read, write, edit, glob, grep, bash); err != nil {
 		t.Fatalf("Toolkit registration error = %v", err)
+	}
+	if _, err := toolkit.New(read, write, edit, todo, glob, grep, bash); err != nil {
+		t.Fatalf("Toolkit registration with todo error = %v", err)
 	}
 }
 

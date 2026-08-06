@@ -33,6 +33,10 @@ edit, err := builtin.NewEdit(builtin.EditOptions{FileSystem: space, Permission: 
 if err != nil {
     return err
 }
+todo, err := builtin.NewTodo(builtin.TodoOptions{})
+if err != nil {
+    return err
+}
 glob, err := builtin.NewGlob(builtin.GlobOptions{FileSystem: space, Permission: policy})
 if err != nil {
     return err
@@ -52,10 +56,10 @@ bash, err := builtin.NewBash(builtin.BashOptions{Runner: runner, Permission: pol
 if err != nil {
     return err
 }
-kit, err := toolkit.New(read, write, edit, glob, grep, bash)
+kit, err := toolkit.New(read, write, edit, todo, glob, grep, bash)
 ```
 
-Tool names are stable: `builtin.read`, `builtin.write`, `builtin.edit`, `builtin.glob`, `builtin.grep`, and `builtin.bash`. All currently declare sequential execution. The caller owns FileSystem, Policy, and Runner lifecycles; tools do not close injected dependencies.
+Tool names are stable: `builtin.read`, `builtin.write`, `builtin.edit`, `builtin.todo`, `builtin.glob`, `builtin.grep`, and `builtin.bash`. All currently declare sequential execution. The caller owns FileSystem, Policy, and Runner lifecycles; tools do not close injected dependencies.
 
 A nil Policy denies all calls. Applications must opt in to `permission.AllowAll` explicitly. Bash also has no default Runner: enabling local process execution requires explicitly importing and constructing `command/local`, as shown above. Shell paths are platform configuration, not a portable Core default.
 
@@ -101,6 +105,14 @@ Edit accepts `path`, non-empty `old_text`, `new_text`, optional `replace_all`, o
 Edit reads and writes at most 1 MiB by default, requires UTF-8, and writes mode `0644`. It performs no write when replacement leaves content unchanged. If `expected_digest` is supplied and the current file digest differs, the Tool returns `file_changed` instead of writing. If `dry_run=true`, the Tool returns the planned change and digests without writing.
 
 Edit is a read-modify-write operation over `FileSystem`; it has no compare-and-swap contract and cannot detect a concurrent writer between ReadFile and WriteFile unless callers supply `expected_digest`. SafeSpace replacement atomicity prevents partial content visibility but does not prevent lost updates or promise durability.
+
+## Todo
+
+Todo accepts a bounded run-local checklist snapshot and returns the updated snapshot in `Result.State`. It is not a project-management backend or durable task queue. The tool is useful when the model needs to keep a short structured list of tasks, mark them done, remove items, or clear the checklist inside one Agent Run.
+
+The input accepts an optional `state` snapshot, so the model can thread the prior tool result back into a later call. Supported actions are `list`, `add`, `update`, `complete`, `remove`, and `clear`. The returned text includes the current checklist, while `Result.State` carries the machine-readable snapshot with `version`, `next_id`, and `items`.
+
+Todo items are bounded by count and title size. It is intended as a small execution aid, not as a database-backed task system.
 
 ## Glob and Grep
 

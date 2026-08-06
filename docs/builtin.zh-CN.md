@@ -33,6 +33,10 @@ edit, err := builtin.NewEdit(builtin.EditOptions{FileSystem: space, Permission: 
 if err != nil {
     return err
 }
+todo, err := builtin.NewTodo(builtin.TodoOptions{})
+if err != nil {
+    return err
+}
 glob, err := builtin.NewGlob(builtin.GlobOptions{FileSystem: space, Permission: policy})
 if err != nil {
     return err
@@ -52,10 +56,10 @@ bash, err := builtin.NewBash(builtin.BashOptions{Runner: runner, Permission: pol
 if err != nil {
     return err
 }
-kit, err := toolkit.New(read, write, edit, glob, grep, bash)
+kit, err := toolkit.New(read, write, edit, todo, glob, grep, bash)
 ```
 
-Tool Name 固定为 `builtin.read`、`builtin.write`、`builtin.edit`、`builtin.glob`、`builtin.grep` 和 `builtin.bash`。当前它们都声明为顺序执行。FileSystem、Policy 和 Runner 的生命周期属于调用方，Tool 不会关闭注入依赖。
+Tool Name 固定为 `builtin.read`、`builtin.write`、`builtin.edit`、`builtin.todo`、`builtin.glob`、`builtin.grep` 和 `builtin.bash`。当前它们都声明为顺序执行。FileSystem、Policy 和 Runner 的生命周期属于调用方，Tool 不会关闭注入依赖。
 
 nil Policy 默认拒绝全部调用；应用必须显式使用 `permission.AllowAll` 才能放行所有操作。Bash 也没有默认 Runner：启用本地进程执行需要像上例一样显式 Import 并构造 `command/local`。Shell Path 是平台配置，不是 Core 的可移植默认值。
 
@@ -101,6 +105,14 @@ Edit 接收 `path`、非空 `old_text`、`new_text`，以及可选的 `replace_a
 Edit 默认最多读写 1 MiB，要求 UTF-8，并以 `0644` Mode 写回。替换前后内容相同时不会执行写入。如果提供了 `expected_digest` 且当前文件 digest 不一致，Tool 会返回 `file_changed` 而不是写入。如果 `dry_run=true`，Tool 只返回计划中的变更和 digest，不会写盘。
 
 Edit 是 FileSystem 上的 Read-Modify-Write，不具备 Compare-and-Swap 契约；只有调用方带上 `expected_digest` 时，才能发现 ReadFile 与 WriteFile 之间的并发写入。SafeSpace 的替换原子性只能避免看到部分内容，不能防止 Lost Update，也不承诺 Durability。
+
+## Todo
+
+Todo 接收一个受限的 run-local 待办列表快照，并把更新后的快照放进 `Result.State`。它不是项目管理后端，也不是持久化任务队列。它适合让模型在一次 Agent Run 内维护短小的结构化待办、标记完成、删除条目或清空列表。
+
+输入里可以带上可选的 `state` 快照，这样模型就能把上一次工具结果继续线程化到下一次调用。支持的动作是 `list`、`add`、`update`、`complete`、`remove` 和 `clear`。返回文本会显示当前列表，而 `Result.State` 会带上含 `version`、`next_id` 和 `items` 的机器可读快照。
+
+Todo 项数量和标题大小都受上限控制。它是一个小型执行辅助工具，不是数据库型任务系统。
 
 ## Glob 与 Grep
 
