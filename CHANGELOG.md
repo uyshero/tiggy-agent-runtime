@@ -16,6 +16,7 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 - `observe.LogSink` emits selected Instruction Stack aggregate byte diagnostics without logging prompt bodies, segment sources, Skill names, Tool schemas, Message IDs, or Memory content.
 - `agenttest.ValidateInstructionStackBudget` provides a content-free test guard for static instruction byte budgets using Context Manifests, and the compiled agenttest example demonstrates inspecting and budgeting Instruction Stack bytes.
 - Documentation now covers Context Assembly, progressive capability disclosure, Context diagnostics, Instruction Stack budget inspection, the static v0.1.2 disclosure plan, and a v0.2.0 Dynamic Capability Activation draft.
+- Documentation now clarifies the `StatusSuspended` / `Resume` state machine and provides an Enterprise persistence reference for database-backed run state, Worker leases, approval records, crash boundaries, and external-effect reconciliation while keeping those concerns outside Core.
 
 ### Compatibility
 
