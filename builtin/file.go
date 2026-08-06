@@ -4,11 +4,14 @@ package builtin
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 
 	"github.com/uyshero/tiggy-agent-runtime/permission"
 	"github.com/uyshero/tiggy-agent-runtime/safespace"
@@ -93,4 +96,31 @@ func fileSystemError(operation string, err error) error {
 
 func invalidArguments(cause error) *tool.Error {
 	return tool.NewError("invalid_tool_arguments", "The tool arguments are invalid.", false, cause)
+}
+
+func contentDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func validateExpectedDigest(value string) error {
+	if value == "" {
+		return nil
+	}
+	const prefix = "sha256:"
+	if value != strings.TrimSpace(value) || !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+64 {
+		return invalidArguments(fmt.Errorf("expected_digest must be a sha256 digest"))
+	}
+	if _, err := hex.DecodeString(strings.TrimPrefix(value, prefix)); err != nil {
+		return invalidArguments(fmt.Errorf("expected_digest must be a sha256 digest: %w", err))
+	}
+	return nil
+}
+
+func fileStateJSON(state any) json.RawMessage {
+	data, err := json.Marshal(state)
+	if err != nil {
+		panic(fmt.Sprintf("builtin file state marshal: %v", err))
+	}
+	return data
 }

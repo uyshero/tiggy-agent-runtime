@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/uyshero/tiggy-agent-runtime/builtin"
@@ -59,8 +60,15 @@ func TestReadWriteUseSafeSpaceAndCanonicalPermissionTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(readResult.Content) != 2 || readResult.Content[1].Text != "hello" {
+	if len(readResult.Content) != 2 || readResult.Content[1].Text != "hello" || !strings.Contains(readResult.Content[0].Text, "file_digest=sha256:") {
 		t.Fatalf("read result = %#v", readResult)
+	}
+	var state struct {
+		Path   string `json:"path"`
+		Digest string `json:"digest"`
+	}
+	if err := json.Unmarshal(readResult.State, &state); err != nil || state.Path != "today.txt" || !strings.HasPrefix(state.Digest, "sha256:") {
+		t.Fatalf("read state = %s, %v", readResult.State, err)
 	}
 	if len(requests) != 2 || requests[0].Tool != builtin.WriteToolName || requests[0].Action != permission.ActionWrite || requests[0].Target != "today.txt" || requests[1].Action != permission.ActionRead {
 		t.Fatalf("permission requests = %#v", requests)
@@ -82,8 +90,15 @@ func TestReadReturnsValidResultForEmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Content) != 1 || result.Content[0].Text != `Read 0 bytes from "empty.txt"; the file is empty.` {
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, `Read 0 bytes from "empty.txt"; the file is empty.`) || !strings.Contains(result.Content[0].Text, "file_digest=sha256:") {
 		t.Fatalf("result = %#v", result)
+	}
+	var state struct {
+		Path   string `json:"path"`
+		Digest string `json:"digest"`
+	}
+	if err := json.Unmarshal(result.State, &state); err != nil || state.Path != "empty.txt" || !strings.HasPrefix(state.Digest, "sha256:") {
+		t.Fatalf("state = %s, %v", result.State, err)
 	}
 }
 

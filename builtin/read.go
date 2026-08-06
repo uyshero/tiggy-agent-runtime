@@ -92,12 +92,20 @@ func (r *ReadTool) Execute(ctx context.Context, arguments json.RawMessage) (tool
 	if !utf8.Valid(data) {
 		return tool.Result{}, tool.NewError("unsupported_file_encoding", "The file is not valid UTF-8 text.", false, nil)
 	}
-	summary := fmt.Sprintf("Read %d bytes from %q.", len(data), path)
+	digest := contentDigest(data)
+	summary := fmt.Sprintf("Read %d bytes from %q. file_digest=%s.", len(data), path, digest)
 	contents := []message.Content{{Type: message.ContentText, Text: summary}}
 	if len(data) == 0 {
-		contents[0].Text = fmt.Sprintf("Read 0 bytes from %q; the file is empty.", path)
+		contents[0].Text = fmt.Sprintf("Read 0 bytes from %q; the file is empty. file_digest=%s.", path, digest)
 	} else {
 		contents = append(contents, message.Content{Type: message.ContentText, Text: string(data)})
 	}
-	return tool.Result{Content: contents}, nil
+	return tool.Result{
+		Content: contents,
+		State: fileStateJSON(struct {
+			Path      string `json:"path"`
+			SizeBytes int    `json:"size_bytes"`
+			Digest    string `json:"digest"`
+		}{Path: path, SizeBytes: len(data), Digest: digest}),
+	}, nil
 }

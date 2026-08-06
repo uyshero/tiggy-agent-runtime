@@ -86,6 +86,8 @@ Read 接收 `{"path":"..."}` 并返回 UTF-8 文本。模型可见文件内容�
 
 非空文件返回一个摘要 Content Block 和一个文件内容 Block。空文件返回非空摘要，保证 Tool Result 符合协议。二进制或其他非法 UTF-8 内容返回 `unsupported_file_encoding`；Read 不会静默转码，也不会把二进制直接塞入模型上下文。
 
+摘要里会带上 `file_digest=sha256:...` 标记，`Result.State` 也会带 `path` / `size_bytes` / `digest` 的机器可读快照，调用方可以把它作为 `builtin.edit` 的 `expected_digest`。
+
 ## Write
 
 Write 接收 `{"path":"...","content":"..."}`，以 `0644` Mode 创建或替换文件。内容默认最多 1 MiB，可通过 `WriteOptions.MaxBytes` 调整。内容大小在 Permission 和 I/O 前检查。
@@ -94,9 +96,11 @@ SafeSpace 当前通过同目录临时文件和 Rename 实现替换；其他 File
 
 ## Edit
 
-Edit 接收 `path`、非空 `old_text`、`new_text` 和可选 `replace_all`。默认要求 `old_text` 恰好出现一次：没有匹配返回 `text_not_found`，多处匹配返回 `ambiguous_match`。设置 `replace_all=true` 后替换全部不重叠精确匹配。
+Edit 接收 `path`、非空 `old_text`、`new_text`，以及可选的 `replace_all`、`expected_digest` 和 `dry_run`。默认要求 `old_text` 恰好出现一次：没有匹配返回 `text_not_found`，多处匹配返回 `ambiguous_match`。设置 `replace_all=true` 后替换全部不重叠精确匹配。
 
-Edit 默认最多读写 1 MiB，要求 UTF-8，并以 `0644` Mode 写回。替换前后内容相同时不会执行写入。Edit 是 FileSystem 上的 Read-Modify-Write，不具备 Compare-and-Swap 契约，无法发现 ReadFile 与 WriteFile 之间的并发写入。SafeSpace 的替换原子性只能避免看到部分内容，不能防止 Lost Update，也不承诺 Durability。
+Edit 默认最多读写 1 MiB，要求 UTF-8，并以 `0644` Mode 写回。替换前后内容相同时不会执行写入。如果提供了 `expected_digest` 且当前文件 digest 不一致，Tool 会返回 `file_changed` 而不是写入。如果 `dry_run=true`，Tool 只返回计划中的变更和 digest，不会写盘。
+
+Edit 是 FileSystem 上的 Read-Modify-Write，不具备 Compare-and-Swap 契约；只有调用方带上 `expected_digest` 时，才能发现 ReadFile 与 WriteFile 之间的并发写入。SafeSpace 的替换原子性只能避免看到部分内容，不能防止 Lost Update，也不承诺 Durability。
 
 ## Glob 与 Grep
 

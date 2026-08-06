@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
 	"github.com/uyshero/tiggy-agent-runtime/permission"
 	"github.com/uyshero/tiggy-agent-runtime/safespace"
@@ -62,7 +63,9 @@ func (e *EditTool) Definition() model.ToolDefinition {
 				"path":{"type":"string","minLength":1,"maxLength":4096},
 				"old_text":{"type":"string","minLength":1},
 				"new_text":{"type":"string"},
-				"replace_all":{"type":"boolean"}
+				"replace_all":{"type":"boolean"},
+				"expected_digest":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+				"dry_run":{"type":"boolean"}
 			},
 			"required":["path","old_text","new_text"],
 			"additionalProperties":false
@@ -76,8 +79,13 @@ func (e *EditTool) Execute(ctx context.Context, arguments json.RawMessage) (tool
 		OldText    string `json:"old_text"`
 		NewText    string `json:"new_text"`
 		ReplaceAll bool   `json:"replace_all"`
+		Expected   string `json:"expected_digest"`
+		DryRun     bool   `json:"dry_run"`
 	}
 	if err := decodeArguments(arguments, &input); err != nil {
+		return tool.Result{}, err
+	}
+	if err := validateExpectedDigest(input.Expected); err != nil {
 		return tool.Result{}, err
 	}
 	if input.OldText == "" {
@@ -106,6 +114,10 @@ func (e *EditTool) Execute(ctx context.Context, arguments json.RawMessage) (tool
 	if !utf8.Valid(data) {
 		return tool.Result{}, tool.NewError("unsupported_file_encoding", "The file is not valid UTF-8 text.", false, nil)
 	}
+	beforeDigest := contentDigest(data)
+	if input.Expected != "" && input.Expected != beforeDigest {
+		return tool.Result{}, tool.NewError("file_changed", "The file content digest does not match expected_digest; read the file again before editing.", false, nil)
+	}
 	content := string(data)
 	matches := strings.Count(content, input.OldText)
 	if matches == 0 {
@@ -122,8 +134,28 @@ func (e *EditTool) Execute(ctx context.Context, arguments json.RawMessage) (tool
 	if int64(len(updated)) > e.maxBytes {
 		return tool.Result{}, tool.NewError("file_too_large", "The edited file would exceed the configured size limit.", false, nil)
 	}
+	afterDigest := contentDigest([]byte(updated))
+	state := fileStateJSON(struct {
+		Path         string `json:"path"`
+		SizeBytes    int    `json:"size_bytes"`
+		BeforeDigest string `json:"before_digest"`
+		AfterDigest  string `json:"after_digest"`
+		Replacements int    `json:"replacements"`
+		DryRun       bool   `json:"dry_run"`
+	}{Path: path, SizeBytes: len(updated), BeforeDigest: beforeDigest, AfterDigest: afterDigest, Replacements: replacementCount, DryRun: input.DryRun})
 	if updated == content {
-		return tool.TextResult(fmt.Sprintf("No content change was needed in %q.", path)), nil
+		result := tool.TextResult(fmt.Sprintf("No content change was needed in %q.", path))
+		result.State = state
+		return result, nil
+	}
+	if input.DryRun {
+		return tool.Result{
+			Content: []message.Content{{Type: message.ContentText, Text: fmt.Sprintf(
+				"Dry run: would replace %d occurrence(s) in %q. before_digest=%s after_digest=%s.",
+				replacementCount, path, beforeDigest, afterDigest,
+			)}},
+			State: state,
+		}, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return tool.Result{}, err
@@ -134,5 +166,10 @@ func (e *EditTool) Execute(ctx context.Context, arguments json.RawMessage) (tool
 	if err := ctx.Err(); err != nil {
 		return tool.Result{}, err
 	}
-	return tool.TextResult(fmt.Sprintf("Replaced %d occurrence(s) in %q.", replacementCount, path)), nil
+	result := tool.TextResult(fmt.Sprintf(
+		"Replaced %d occurrence(s) in %q. before_digest=%s after_digest=%s.",
+		replacementCount, path, beforeDigest, afterDigest,
+	))
+	result.State = state
+	return result, nil
 }

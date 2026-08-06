@@ -86,6 +86,8 @@ Read accepts `{"path":"..."}` and returns UTF-8 text. Its default model-visible 
 
 Non-empty files return one summary Content block followed by one file-content block. Empty files return a non-empty summary so the Tool Result remains protocol-valid. Binary or otherwise invalid UTF-8 content returns `unsupported_file_encoding`; Read does not silently transcode or place binary data into model context.
 
+The summary includes a `file_digest=sha256:...` marker, and `Result.State` carries a machine-readable `path` / `size_bytes` / `digest` snapshot so callers can feed the exact digest back into `builtin.edit` as `expected_digest`.
+
 ## Write
 
 Write accepts `{"path":"...","content":"..."}` and creates or replaces a file with mode `0644`. Its default content limit is 1 MiB and can be changed through `WriteOptions.MaxBytes`. Content size is checked before permission evaluation and I/O.
@@ -94,9 +96,11 @@ SafeSpace currently implements replacement with a same-directory temporary file 
 
 ## Edit
 
-Edit accepts `path`, non-empty `old_text`, `new_text`, and optional `replace_all`. By default, `old_text` must occur exactly once: zero matches return `text_not_found`, and multiple matches return `ambiguous_match`. Setting `replace_all=true` replaces every non-overlapping exact match.
+Edit accepts `path`, non-empty `old_text`, `new_text`, optional `replace_all`, optional `expected_digest`, and optional `dry_run`. By default, `old_text` must occur exactly once: zero matches return `text_not_found`, and multiple matches return `ambiguous_match`. Setting `replace_all=true` replaces every non-overlapping exact match.
 
-Edit reads and writes at most 1 MiB by default, requires UTF-8, and writes mode `0644`. It performs no write when replacement leaves content unchanged. Edit is a read-modify-write operation over `FileSystem`; it has no compare-and-swap contract and cannot detect a concurrent writer between ReadFile and WriteFile. SafeSpace replacement atomicity prevents partial content visibility but does not prevent lost updates or promise durability.
+Edit reads and writes at most 1 MiB by default, requires UTF-8, and writes mode `0644`. It performs no write when replacement leaves content unchanged. If `expected_digest` is supplied and the current file digest differs, the Tool returns `file_changed` instead of writing. If `dry_run=true`, the Tool returns the planned change and digests without writing.
+
+Edit is a read-modify-write operation over `FileSystem`; it has no compare-and-swap contract and cannot detect a concurrent writer between ReadFile and WriteFile unless callers supply `expected_digest`. SafeSpace replacement atomicity prevents partial content visibility but does not prevent lost updates or promise durability.
 
 ## Glob and Grep
 

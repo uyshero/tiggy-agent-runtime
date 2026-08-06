@@ -17,6 +17,7 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 - `agenttest.ValidateInstructionStackBudget` provides a content-free test guard for static instruction byte budgets using Context Manifests, and the compiled agenttest example demonstrates inspecting and budgeting Instruction Stack bytes.
 - Documentation now covers Context Assembly, progressive capability disclosure, Context diagnostics, Instruction Stack budget inspection, the static v0.1.2 disclosure plan, and a v0.2.0 Dynamic Capability Activation draft.
 - Documentation now clarifies the `StatusSuspended` / `Resume` state machine and provides an Enterprise persistence reference for database-backed run state, Worker leases, approval records, crash boundaries, and external-effect reconciliation while keeping those concerns outside Core.
+- Built-in `read` now returns a content digest in both the human summary and `Result.State`, and built-in `edit` can reject stale `expected_digest` values or run as a non-writing `dry_run` while emitting before/after digests in its summary and state.
 
 ### Compatibility
 
