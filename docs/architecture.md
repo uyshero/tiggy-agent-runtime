@@ -23,6 +23,22 @@ Application
            -> run recorder
 ```
 
+## Minimal Agent Loop
+
+Strictly speaking, a minimal Agent Run is not "send a prompt to a model"; it is a bounded, verifiable, extensible execution loop:
+
+| Component | Runtime responsibility |
+| --- | --- |
+| Goal and instructions | User input, `agent.Config.SystemPrompt`, `agent.Config.Instructions`, Skill activation, and the Instruction Stack define the task, durable rules, and dynamic-context boundary. |
+| Model | The `model.Model` Port and optional `ModelTarget`/Fallbacks generate text or Tool Calls. Provider adapters perform calls; they do not own Agent policy. |
+| Tool definitions | `tool.Tool`, `toolkit.Toolkit`, MCP Tools, Skill Tool Groups, and built-ins form an immutable per-Run capability snapshot. |
+| Runtime controller | `agent.Agent` owns the bounded ReAct loop: Context Assembly, model calls, Tool Batch execution, Retry/Fallback, approval suspension, cancellation propagation, and Event emission. |
+| Task state | `agent.State` stores continuable messages, usage, and optional approval Suspension. Memory Recall, Compression, and Artifact Offload affect projections or references instead of pretending to be ordinary history. |
+| Result validation | Message/Tool Call/Tool Result, Tool Schema, Model Response, Compression Decision, Memory Result, Artifact Reference, and Event Sink outputs are validated and copied at boundaries. |
+| Termination condition | Final response, failure, cancellation, approval suspension, or limit exhaustion. Each invocation must emit exactly one terminal Event. |
+
+Without one of these pieces, a system may still call a model or execute a tool, but it is not yet a reliable Agent Runtime: without State it cannot Continue/Resume, without validation it can corrupt State, without termination it cannot prove a Run ended, and without a Tool snapshot it cannot explain which capabilities were model-visible.
+
 ## Dependency Direction
 
 ```text

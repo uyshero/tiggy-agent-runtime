@@ -21,6 +21,22 @@ Application
            -> Run Recorder
 ```
 
+## 最小 Agent 闭环
+
+严格来说，一次最小 Agent Run 不是“把 Prompt 发给模型”，而是一个可终止、可验证、可扩展的执行闭环：
+
+| 组件 | Runtime 中的对应职责 |
+| --- | --- |
+| 目标与指令 | 用户输入、`agent.Config.SystemPrompt`、`agent.Config.Instructions`、Skill Activation 和 Instruction Stack，定义当前任务、长期规则和动态上下文边界。 |
+| 模型 | `model.Model` Port 与可选 `ModelTarget`/Fallback，负责生成文本或 Tool Call；Provider Adapter 只实现调用，不拥有 Agent 策略。 |
+| 工具定义 | `tool.Tool`、`toolkit.Toolkit`、MCP Tool、Skill Tool Group 和内置工具，形成一次 Run 开始时不可变的能力快照。 |
+| 运行控制器 | `agent.Agent` 的有界 ReAct Loop，负责 Context Assembly、模型调用、Tool Batch 执行、Retry/Fallback、审批暂停、取消传播和 Event 发射。 |
+| 任务状态 | `agent.State` 保存可继续的消息、用量和可选审批 Suspension；Memory Recall、Compression 和 Artifact Offload 只改变投影视图或引用，不伪装成普通历史。 |
+| 结果验证 | Message/Tool Call/Tool Result、Tool Schema、Model Response、Compression Decision、Memory Result、Artifact Reference 和 Event Sink 都在边界处校验并复制。 |
+| 终止条件 | Final Response、失败、取消、审批挂起或 Limit 触发；每次调用必须产生且只产生一个 Terminal Event。 |
+
+缺少其中任一项，系统仍可能调用模型或工具，但还不是可靠的 Agent Runtime：没有状态就不能 Continue/Resume，没有验证就会污染 State，没有终止条件就无法证明一次 Run 结束，没有工具快照就无法解释模型当时拥有哪些能力。
+
 ## 依赖方向
 
 ```text

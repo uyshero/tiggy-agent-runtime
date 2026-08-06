@@ -31,6 +31,18 @@ const (
 	MetricRetryCount           = "tiggy.agent.model.retry.count"
 	MetricFallbackCount        = "tiggy.agent.model.fallback.count"
 	MetricLimitCount           = "tiggy.agent.limit.count"
+	MetricAsyncQueueCapacity   = "tiggy.agent.observer.async.queue.capacity"
+	MetricAsyncBatchSize       = "tiggy.agent.observer.async.batch.size"
+	MetricAsyncQueueDepth      = "tiggy.agent.observer.async.queue.depth"
+	MetricAsyncPending         = "tiggy.agent.observer.async.pending"
+	MetricAsyncSubmitted       = "tiggy.agent.observer.async.submitted.count"
+	MetricAsyncProcessed       = "tiggy.agent.observer.async.processed.count"
+	MetricAsyncDelegateCalls   = "tiggy.agent.observer.async.delegate.call.count"
+	MetricAsyncDropped         = "tiggy.agent.observer.async.dropped.count"
+	MetricAsyncDelegateFailure = "tiggy.agent.observer.async.delegate.failure.count"
+	MetricAsyncRejected        = "tiggy.agent.observer.async.rejected.count"
+	MetricAsyncClosed          = "tiggy.agent.observer.async.closed"
+	MetricAsyncAborted         = "tiggy.agent.observer.async.aborted"
 )
 
 // MetricKind 描述 Recorder 如何聚合 Measurement。
@@ -39,6 +51,7 @@ type MetricKind string
 const (
 	MetricCounter   MetricKind = "counter"
 	MetricHistogram MetricKind = "histogram"
+	MetricGauge     MetricKind = "gauge"
 )
 
 // Attribute 是有界基数的指标维度。
@@ -61,7 +74,7 @@ func (m Measurement) Validate() error {
 	if !strings.HasPrefix(m.Name, "tiggy.agent.") {
 		return fmt.Errorf("metric name must use the tiggy.agent namespace")
 	}
-	if m.Kind != MetricCounter && m.Kind != MetricHistogram {
+	if m.Kind != MetricCounter && m.Kind != MetricHistogram && m.Kind != MetricGauge {
 		return fmt.Errorf("unsupported metric kind %q", m.Kind)
 	}
 	if math.IsNaN(m.Value) || math.IsInf(m.Value, 0) || m.Value < 0 {

@@ -44,6 +44,130 @@ func TestAsyncSinkFlushDeliversEvents(t *testing.T) {
 	}
 }
 
+func TestAsyncBatchSinkCoalescesAvailableEvents(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		batches [][]string
+		calls   int
+	)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	async, err := NewAsyncBatchSink(func(values []event.Event) error {
+		ids := make([]string, len(values))
+		for index, value := range values {
+			ids[index] = value.ID
+		}
+		mu.Lock()
+		batches = append(batches, ids)
+		calls++
+		call := calls
+		mu.Unlock()
+		if call == 1 {
+			close(started)
+			<-release
+		}
+		return nil
+	}, AsyncBatchOptions{QueueSize: 4, BatchSize: 3, DropPolicy: AsyncBlock})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events := asyncEvents(t, "batch", 5)
+	if err := async.Sink(events[0]); err != nil {
+		t.Fatalf("Sink(first) error = %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first batch")
+	}
+	for _, value := range events[1:] {
+		if err := async.Sink(value); err != nil {
+			t.Fatalf("Sink(%s) error = %v", value.ID, err)
+		}
+	}
+	close(release)
+	if err := async.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := [][]string{{"evt_1"}, {"evt_2", "evt_3", "evt_4"}, {"evt_5"}}
+	if len(batches) != len(want) {
+		t.Fatalf("batches = %#v, want %#v", batches, want)
+	}
+	for index := range want {
+		if strings.Join(batches[index], ",") != strings.Join(want[index], ",") {
+			t.Fatalf("batches = %#v, want %#v", batches, want)
+		}
+	}
+	stats := async.Stats()
+	if stats.BatchSize != 3 || stats.QueueCapacity != 4 || stats.Processed != 5 ||
+		stats.DelegateCalls != 3 || stats.DelegateFailures != 0 || stats.Pending != 0 {
+		t.Fatalf("Stats() = %#v", stats)
+	}
+}
+
+func TestAsyncBatchSinkContainsDelegatePanic(t *testing.T) {
+	handled := make(chan error, 1)
+	async, err := NewAsyncBatchSink(func([]event.Event) error {
+		panic("batch exploded")
+	}, AsyncBatchOptions{
+		QueueSize: 2,
+		BatchSize: 2,
+		OnError: func(err error) {
+			handled <- err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = async.Shutdown(context.Background()) })
+
+	value := testEvent(t, "batch_panic", "evt_1", event.RunStarted, 1, time.Now(), "", event.RunStartedPayload{Agent: "agent"})
+	if err := async.Sink(value); err != nil {
+		t.Fatalf("Sink() error = %v", err)
+	}
+	if err := async.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+	select {
+	case err := <-handled:
+		if !strings.Contains(err.Error(), "observer panic: batch exploded") {
+			t.Fatalf("OnError() = %v", err)
+		}
+	default:
+		t.Fatal("OnError() was not called")
+	}
+	stats := async.Stats()
+	if stats.Processed != 1 || stats.DelegateCalls != 1 || stats.DelegateFailures != 1 {
+		t.Fatalf("Stats() = %#v", stats)
+	}
+}
+
+func TestNewAsyncBatchSinkValidatesBatchSize(t *testing.T) {
+	if _, err := NewAsyncBatchSink(nil, AsyncBatchOptions{}); err == nil {
+		t.Fatal("NewAsyncBatchSink(nil) returned nil error")
+	}
+	if _, err := NewAsyncBatchSink(func([]event.Event) error { return nil }, AsyncBatchOptions{
+		QueueSize: 1,
+		BatchSize: 2,
+	}); err == nil {
+		t.Fatal("NewAsyncBatchSink() accepted BatchSize larger than QueueSize")
+	}
+	async, err := NewAsyncBatchSink(func([]event.Event) error { return nil }, AsyncBatchOptions{QueueSize: 1})
+	if err != nil {
+		t.Fatalf("NewAsyncBatchSink() default BatchSize error = %v", err)
+	}
+	if stats := async.Stats(); stats.BatchSize != 1 {
+		t.Fatalf("default Stats() = %#v", stats)
+	}
+	if err := async.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+}
+
 func TestAsyncSinkDropNewestReportsDroppedEvent(t *testing.T) {
 	control := newBlockingSink()
 	var dropped []string
@@ -72,12 +196,23 @@ func TestAsyncSinkDropNewestReportsDroppedEvent(t *testing.T) {
 	if len(dropped) != 1 || !strings.Contains(dropped[0], `dropped newest event "evt_3"`) {
 		t.Fatalf("dropped = %#v", dropped)
 	}
+	stats := async.Stats()
+	if stats.QueueCapacity != 1 || stats.QueueDepth != 1 || stats.Pending != 2 ||
+		stats.Submitted != 3 || stats.Processed != 0 || stats.DroppedNewest != 1 ||
+		stats.DroppedOldest != 0 || stats.DelegateFailures != 0 || stats.Rejected != 0 || stats.Closed {
+		t.Fatalf("Stats() while blocked = %#v", stats)
+	}
 
 	control.release()
 	if err := async.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown() error = %v", err)
 	}
 	control.assertDelivered(t, []string{"evt_1", "evt_2"})
+	stats = async.Stats()
+	if stats.QueueDepth != 0 || stats.Pending != 0 || stats.Submitted != 3 ||
+		stats.Processed != 2 || stats.DroppedNewest != 1 || !stats.Closed {
+		t.Fatalf("Stats() after shutdown = %#v", stats)
+	}
 }
 
 func TestAsyncSinkDropOldestReportsDroppedEvent(t *testing.T) {
@@ -107,6 +242,9 @@ func TestAsyncSinkDropOldestReportsDroppedEvent(t *testing.T) {
 	}
 	if len(dropped) != 1 || !strings.Contains(dropped[0], `dropped oldest event "evt_2"`) {
 		t.Fatalf("dropped = %#v", dropped)
+	}
+	if stats := async.Stats(); stats.DroppedOldest != 1 || stats.DroppedNewest != 0 || stats.Pending != 2 {
+		t.Fatalf("Stats() while blocked = %#v", stats)
 	}
 
 	control.release()
@@ -178,6 +316,9 @@ func TestAsyncSinkShutdownDrainsAndRejectsLaterEvents(t *testing.T) {
 	if err := async.Sink(testEvent(t, "shutdown", "evt_4", event.RunCompleted, 4, time.Now(), "", event.RunTerminalPayload{Status: "completed"})); err == nil {
 		t.Fatal("Sink() after Shutdown returned nil")
 	}
+	if stats := async.Stats(); !stats.Closed || stats.Rejected != 1 || stats.Processed != 3 || stats.Pending != 0 {
+		t.Fatalf("Stats() after rejected event = %#v", stats)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -207,6 +348,112 @@ func TestAsyncSinkFlushReturnsContextError(t *testing.T) {
 	control.release()
 	if err := async.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown() error = %v", err)
+	}
+}
+
+func TestAsyncSinkAbortDoesNotWaitAndDiscardsQueue(t *testing.T) {
+	control := newBlockingSink()
+	async, err := NewAsyncSink(control.sink, AsyncOptions{QueueSize: 2, DropPolicy: AsyncBlock})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events := asyncEvents(t, "abort", 4)
+	if err := async.Sink(events[0]); err != nil {
+		t.Fatalf("Sink(first) error = %v", err)
+	}
+	control.waitStarted(t, "evt_1")
+	if err := async.Sink(events[1]); err != nil {
+		t.Fatalf("Sink(second) error = %v", err)
+	}
+	if err := async.Sink(events[2]); err != nil {
+		t.Fatalf("Sink(third) error = %v", err)
+	}
+
+	abortReturned := make(chan struct{})
+	go func() {
+		async.Abort()
+		async.Abort()
+		close(abortReturned)
+	}()
+	select {
+	case <-abortReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Abort() waited for blocked delegate")
+	}
+	if err := async.Sink(events[3]); err == nil {
+		t.Fatal("Sink() after Abort returned nil")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := async.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Shutdown() while delegate blocked = %v, want deadline exceeded", err)
+	}
+
+	control.release()
+	if err := async.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() after release error = %v", err)
+	}
+	control.assertDelivered(t, []string{"evt_1"})
+	stats := async.Stats()
+	if !stats.Closed || !stats.Aborted || stats.Pending != 0 || stats.Submitted != 3 ||
+		stats.Processed != 1 || stats.Discarded != 2 || stats.Rejected != 1 {
+		t.Fatalf("Stats() = %#v", stats)
+	}
+}
+
+func TestAsyncSinkAbortWaitsForInFlightSenderBeforeDiscarding(t *testing.T) {
+	control := newBlockingSink()
+	dropReported := make(chan struct{})
+	continueDrop := make(chan struct{})
+	async, err := NewAsyncSink(control.sink, AsyncOptions{
+		QueueSize:  1,
+		DropPolicy: AsyncDropOldest,
+		OnError: func(err error) {
+			if strings.Contains(err.Error(), `dropped oldest event "evt_2"`) {
+				close(dropReported)
+				<-continueDrop
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events := asyncEvents(t, "abort_in_flight", 3)
+	if err := async.Sink(events[0]); err != nil {
+		t.Fatalf("Sink(first) error = %v", err)
+	}
+	control.waitStarted(t, "evt_1")
+	if err := async.Sink(events[1]); err != nil {
+		t.Fatalf("Sink(second) error = %v", err)
+	}
+	thirdReturned := make(chan error, 1)
+	go func() {
+		thirdReturned <- async.Sink(events[2])
+	}()
+	select {
+	case <-dropReported:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for in-flight drop handler")
+	}
+
+	async.Abort()
+	control.release()
+	close(continueDrop)
+	if err := <-thirdReturned; err != nil {
+		t.Fatalf("Sink(third) error = %v", err)
+	}
+	if err := async.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	control.assertDelivered(t, []string{"evt_1"})
+	stats := async.Stats()
+	if stats.Pending != 0 || stats.Submitted != 3 || stats.Processed != 1 ||
+		stats.DroppedOldest != 1 || stats.Discarded != 1 || !stats.Aborted {
+		t.Fatalf("Stats() = %#v", stats)
 	}
 }
 
@@ -249,6 +496,9 @@ func TestAsyncSinkReportsDelegateErrorsAndPanics(t *testing.T) {
 	if len(handled) != 2 || !strings.Contains(handled[0], "delegate failed") || !strings.Contains(handled[1], "observer panic: delegate exploded") {
 		t.Fatalf("handled = %#v", handled)
 	}
+	if stats := async.Stats(); stats.Processed != 2 || stats.DelegateFailures != 2 || stats.Pending != 0 {
+		t.Fatalf("Stats() = %#v", stats)
+	}
 }
 
 func TestAsyncSinkOwnsEventPayload(t *testing.T) {
@@ -277,6 +527,109 @@ func TestAsyncSinkOwnsEventPayload(t *testing.T) {
 	close(inspect)
 	if payload := <-seen; !strings.Contains(payload, `"agent":"agent"`) {
 		t.Fatalf("payload = %q", payload)
+	}
+}
+
+func TestAsyncSinkStatsConcurrentAccounting(t *testing.T) {
+	async, err := NewAsyncSink(func(event.Event) error {
+		return nil
+	}, AsyncOptions{QueueSize: 16, DropPolicy: AsyncDropNewest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = async.Shutdown(context.Background()) })
+
+	value := testEvent(t, "stats_concurrent", "evt_shared", event.ModelCallDelta, 1, time.Now(), "", event.ModelDeltaPayload{
+		CallID: "call_1",
+		Delta:  model.Delta{Type: model.DeltaText, Text: "delta"},
+	})
+	const (
+		producers   = 8
+		perProducer = 100
+	)
+	var producersWG sync.WaitGroup
+	producersWG.Add(producers)
+	for range producers {
+		go func() {
+			defer producersWG.Done()
+			for range perProducer {
+				if err := async.Sink(value); err != nil {
+					t.Errorf("Sink() error = %v", err)
+					return
+				}
+			}
+		}()
+	}
+	producersDone := make(chan struct{})
+	go func() {
+		producersWG.Wait()
+		close(producersDone)
+	}()
+	for {
+		select {
+		case <-producersDone:
+			goto produced
+		default:
+			_ = async.Stats()
+		}
+	}
+
+produced:
+	if err := async.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+	stats := async.Stats()
+	if stats.Submitted != producers*perProducer || stats.Pending != 0 ||
+		stats.Processed+stats.DroppedNewest+stats.DroppedOldest+stats.Discarded != stats.Submitted ||
+		stats.DelegateFailures != 0 || stats.Rejected != 0 {
+		t.Fatalf("Stats() = %#v", stats)
+	}
+}
+
+func TestAsyncSinkStressAccounting(t *testing.T) {
+	const (
+		producers   = 16
+		perProducer = 250
+		queueSize   = 32
+	)
+	async, err := NewAsyncBatchSink(func([]event.Event) error {
+		return nil
+	}, AsyncBatchOptions{
+		QueueSize:  queueSize,
+		BatchSize:  8,
+		DropPolicy: AsyncDropNewest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value := testEvent(t, "stress", "evt_shared", event.ModelCallDelta, 1, time.Now(), "", event.ModelDeltaPayload{
+		CallID: "call_1",
+		Delta:  model.Delta{Type: model.DeltaText, Text: "delta"},
+	})
+	var group sync.WaitGroup
+	group.Add(producers)
+	for range producers {
+		go func() {
+			defer group.Done()
+			for range perProducer {
+				if err := async.Sink(value); err != nil {
+					t.Errorf("Sink() error = %v", err)
+					return
+				}
+			}
+		}()
+	}
+	group.Wait()
+	if err := async.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	stats := async.Stats()
+	if stats.Submitted != producers*perProducer || stats.Pending != 0 || stats.QueueDepth != 0 ||
+		stats.Processed+stats.DroppedNewest+stats.DroppedOldest+stats.Discarded != stats.Submitted ||
+		stats.DelegateCalls > stats.Processed || stats.BatchSize != 8 || stats.QueueCapacity != queueSize {
+		t.Fatalf("Stats() = %#v", stats)
 	}
 }
 

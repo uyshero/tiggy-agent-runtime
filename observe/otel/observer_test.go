@@ -119,6 +119,59 @@ func TestObserverContainsParentContextPanic(t *testing.T) {
 	}
 }
 
+func TestObserverExportsAsyncSinkGaugesAndCounters(t *testing.T) {
+	t.Parallel()
+
+	tracerProvider := sdktrace.NewTracerProvider()
+	metricReader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(metricReader))
+	t.Cleanup(func() {
+		_ = tracerProvider.Shutdown(context.Background())
+		_ = meterProvider.Shutdown(context.Background())
+	})
+	observer, err := New(Options{TracerProvider: tracerProvider, MeterProvider: meterProvider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	async, err := observe.NewAsyncSink(func(event.Event) error { return nil }, observe.AsyncOptions{QueueSize: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = async.Shutdown(context.Background()) })
+	metrics, err := observer.NewAsyncMetrics("otel.primary", async)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value := otelTestEvent(t, "run_async_otel", "evt_1", event.RunStarted, 1, time.Now(), "", event.RunStartedPayload{Agent: "agent"})
+	if err := async.Sink(value); err != nil {
+		t.Fatalf("Sink() error = %v", err)
+	}
+	if err := async.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+	if err := metrics.Record(); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	var exported metricdata.ResourceMetrics
+	if err := metricReader.Collect(context.Background(), &exported); err != nil {
+		t.Fatal(err)
+	}
+	kinds := make(map[string]any)
+	for _, scope := range exported.ScopeMetrics {
+		for _, metricValue := range scope.Metrics {
+			kinds[metricValue.Name] = metricValue.Data
+		}
+	}
+	if _, ok := kinds[observe.MetricAsyncQueueDepth].(metricdata.Gauge[float64]); !ok {
+		t.Fatalf("%s data = %T, want metricdata.Gauge[float64]", observe.MetricAsyncQueueDepth, kinds[observe.MetricAsyncQueueDepth])
+	}
+	if _, ok := kinds[observe.MetricAsyncSubmitted].(metricdata.Sum[float64]); !ok {
+		t.Fatalf("%s data = %T, want metricdata.Sum[float64]", observe.MetricAsyncSubmitted, kinds[observe.MetricAsyncSubmitted])
+	}
+}
+
 func TestNewRequiresApplicationOwnedProviders(t *testing.T) {
 	t.Parallel()
 

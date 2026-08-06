@@ -33,8 +33,9 @@ type Options struct {
 // Observer 把一个或多个完整 Run 事件流转为 OTel span 与指标。
 // 并发安全，不拥有也不关闭 Providers。
 type Observer struct {
-	trace   *traceObserver
-	metrics *observe.Metrics
+	trace          *traceObserver
+	metrics        *observe.Metrics
+	metricRecorder *metricRecorder
 }
 
 // New 构造 Observer；TracerProvider 与 MeterProvider 必填。
@@ -55,7 +56,8 @@ func New(options Options) (*Observer, error) {
 			tracer: options.TracerProvider.Tracer(instrumentationName), parentContext: options.ParentContext,
 			runs: make(map[string]string), spans: make(map[string]spanState),
 		},
-		metrics: metrics,
+		metrics:        metrics,
+		metricRecorder: recorder,
 	}, nil
 }
 
@@ -71,9 +73,19 @@ func (o *Observer) Sink(value event.Event) error {
 	return o.metrics.Sink(cloneEvent(value))
 }
 
+// NewAsyncMetrics binds an AsyncSink sampler to this Observer's application-owned MeterProvider.
+// The returned sampler owns no timer; applications call Record at their chosen interval.
+func (o *Observer) NewAsyncMetrics(name string, sink *observe.AsyncSink) (*observe.AsyncMetrics, error) {
+	if o == nil {
+		return nil, fmt.Errorf("OpenTelemetry observer is required")
+	}
+	return observe.NewAsyncMetrics(sink, o.metricRecorder, observe.AsyncMetricsOptions{Name: name})
+}
+
 type metricRecorder struct {
 	counters   map[string]otelmetric.Float64Counter
 	histograms map[string]otelmetric.Float64Histogram
+	gauges     map[string]otelmetric.Float64Gauge
 }
 
 type instrumentSpec struct {
@@ -103,10 +115,23 @@ func newMetricRecorder(meter otelmetric.Meter) (*metricRecorder, error) {
 		{name: observe.MetricRetryCount, kind: observe.MetricCounter, unit: "{event}"},
 		{name: observe.MetricFallbackCount, kind: observe.MetricCounter, unit: "{event}"},
 		{name: observe.MetricLimitCount, kind: observe.MetricCounter, unit: "{event}"},
+		{name: observe.MetricAsyncQueueCapacity, kind: observe.MetricGauge, unit: "{event}"},
+		{name: observe.MetricAsyncBatchSize, kind: observe.MetricGauge, unit: "{event}"},
+		{name: observe.MetricAsyncQueueDepth, kind: observe.MetricGauge, unit: "{event}"},
+		{name: observe.MetricAsyncPending, kind: observe.MetricGauge, unit: "{event}"},
+		{name: observe.MetricAsyncSubmitted, kind: observe.MetricCounter, unit: "{event}"},
+		{name: observe.MetricAsyncProcessed, kind: observe.MetricCounter, unit: "{event}"},
+		{name: observe.MetricAsyncDelegateCalls, kind: observe.MetricCounter, unit: "{call}"},
+		{name: observe.MetricAsyncDropped, kind: observe.MetricCounter, unit: "{event}"},
+		{name: observe.MetricAsyncDelegateFailure, kind: observe.MetricCounter, unit: "{call}"},
+		{name: observe.MetricAsyncRejected, kind: observe.MetricCounter, unit: "{event}"},
+		{name: observe.MetricAsyncClosed, kind: observe.MetricGauge, unit: "1"},
+		{name: observe.MetricAsyncAborted, kind: observe.MetricGauge, unit: "1"},
 	}
 	value := &metricRecorder{
 		counters:   make(map[string]otelmetric.Float64Counter),
 		histograms: make(map[string]otelmetric.Float64Histogram),
+		gauges:     make(map[string]otelmetric.Float64Gauge),
 	}
 	for _, spec := range specs {
 		switch spec.kind {
@@ -122,6 +147,12 @@ func newMetricRecorder(meter otelmetric.Meter) (*metricRecorder, error) {
 				return nil, fmt.Errorf("create histogram %q: %w", spec.name, err)
 			}
 			value.histograms[spec.name] = instrument
+		case observe.MetricGauge:
+			instrument, err := meter.Float64Gauge(spec.name, otelmetric.WithUnit(spec.unit))
+			if err != nil {
+				return nil, fmt.Errorf("create gauge %q: %w", spec.name, err)
+			}
+			value.gauges[spec.name] = instrument
 		}
 	}
 	return value, nil
@@ -144,6 +175,12 @@ func (r *metricRecorder) Record(value observe.Measurement) error {
 		instrument, exists := r.histograms[value.Name]
 		if !exists {
 			return fmt.Errorf("unknown histogram %q", value.Name)
+		}
+		instrument.Record(context.Background(), value.Value, options)
+	case observe.MetricGauge:
+		instrument, exists := r.gauges[value.Name]
+		if !exists {
+			return fmt.Errorf("unknown gauge %q", value.Name)
 		}
 		instrument.Record(context.Background(), value.Value, options)
 	default:

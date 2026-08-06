@@ -6,7 +6,8 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ### Added
 
-- `observe.AsyncSink` provides an official bounded asynchronous Sink wrapper for operational telemetry, with configurable queue size, drop-newest/drop-oldest/block overflow policies, error diagnostics, `Flush`, and `Shutdown` while preserving direct synchronous Sinks for strict audit and recording.
+- `observe.AsyncSink` provides an official bounded asynchronous Sink wrapper for operational telemetry, with configurable queue size, drop-newest/drop-oldest/block overflow policies, optional immediate-availability `BatchSink` coalescing, error diagnostics, graceful `Flush`/`Shutdown`, non-waiting queue-discarding `Abort`, a content-free runtime statistics snapshot, and application-scheduled `AsyncMetrics` Gauge/Counter-delta export through the existing Recorder and OTel contracts while preserving direct synchronous Sinks for strict audit and recording.
+- AsyncSink stress accounting and benchmark coverage now provide a repeatable local baseline for direct, asynchronous, batched, and parallel observer delivery.
 - Static progressive capability disclosure hardening now covers zero, single-Group, and multi-Group Toolkit projections, immutable per-Run Tool views, an external consumer example that asserts the exact model-visible Tool set, and Retry/Fallback scenarios that must not silently expand Tool exposure.
 - `toolkit.View.DefinitionBytes()` reports a content-free aggregate byte count for the Tool definitions visible in one immutable Toolkit view, enabling schema-budget diagnostics without rewriting or summarizing JSON Schema bodies.
 - Context Assembly now renders a model-visible Instruction Stack with a fixed dynamic-context boundary, static segment kinds, and content-free per-kind byte diagnostics for `system_prompt`, `project`, `task_rule`, `policy`, `knowledge`, and `skill`.
@@ -18,6 +19,7 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ### Compatibility
 
+- `MetricKind` gains the additive `gauge` value, and the OTel adapter creates synchronous Float64 Gauges for the new AsyncSink runtime measurements.
 - `ModelContextPayload` gains additive optional JSON fields for Instruction Stack diagnostics. Old Event Protocol V1 recordings without those fields remain valid.
 - Existing callers that omit `agent.Config.ToolGroups` keep the compatibility default of exposing all registered Tools. Progressive capability disclosure remains opt-in for this change set.
 - Custom instruction segment kinds may still render into the Instruction Stack, but Core exposes only fixed built-in kind byte fields in public Events and logs to avoid protocol and cardinality growth.
