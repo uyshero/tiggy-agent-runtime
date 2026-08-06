@@ -6,6 +6,7 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ### Added
 
+- `observe.AsyncSink` provides an official bounded asynchronous Sink wrapper for operational telemetry, with configurable queue size, drop-newest/drop-oldest/block overflow policies, error diagnostics, `Flush`, and `Shutdown` while preserving direct synchronous Sinks for strict audit and recording.
 - Static progressive capability disclosure hardening now covers zero, single-Group, and multi-Group Toolkit projections, immutable per-Run Tool views, an external consumer example that asserts the exact model-visible Tool set, and Retry/Fallback scenarios that must not silently expand Tool exposure.
 - `toolkit.View.DefinitionBytes()` reports a content-free aggregate byte count for the Tool definitions visible in one immutable Toolkit view, enabling schema-budget diagnostics without rewriting or summarizing JSON Schema bodies.
 - Context Assembly now renders a model-visible Instruction Stack with a fixed dynamic-context boundary, static segment kinds, and content-free per-kind byte diagnostics for `system_prompt`, `project`, `task_rule`, `policy`, `knowledge`, and `skill`.

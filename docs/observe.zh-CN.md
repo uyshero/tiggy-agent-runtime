@@ -8,6 +8,8 @@ Event Sink 仍是同步边界。直接传给 Agent 的 Sink 是严格模式：Er
 
 `observe.Chain` 按顺序调用非 nil Sink。每个 Sink 都收到独立 Event/Payload 副本，因此一个 Observer 不能修改下一个 Observer 的输入。严格模式下首个 Error 会停止 Chain。这些 Helper 不启动 goroutine、不持有 Queue，也无法抢占一个阻塞不返回的 Callback。
 
+`observe.AsyncSink` 是官方提供的有界异步包装器，适合普通运行日志和 Telemetry。它拥有一个 Worker，在入口复制 Event，支持 Queue Size、`drop_newest`、`drop_oldest` 或 `block` 溢出策略，并提供 `Flush(ctx)` 与 `Shutdown(ctx)`，方便应用在优雅关闭时排空已接受 Event。Drop 策略会通过 `OnError` 报告溢出并返回 nil；`block` 会保留背压，Queue 满时仍可能阻塞 Run。AsyncSink 不能抢占已经阻塞的下游 Sink；它只是把投递移到有界 Queue 后面。严格 Audit 和必须完整的 Recording 仍应使用直接同步 Sink。
+
 新增 Event Type 保持前向兼容。LogSink 只记录未知 Event 的 Envelope；Metrics 和 OTel 在定义明确的隐私与基数映射前忽略未知 Payload。
 
 ## 结构化日志
@@ -59,12 +61,23 @@ telemetry, err := tiggyotel.New(tiggyotel.Options{
 if err != nil {
     return err
 }
+telemetryAsync, err := observe.NewAsyncSink(telemetry.Sink, observe.AsyncOptions{
+    QueueSize:  1024,
+    DropPolicy: observe.AsyncDropNewest,
+    OnError:    reportObserverError,
+})
+if err != nil {
+    return err
+}
 
 sink := observe.Chain(
     observe.BestEffort(logSink, reportObserverError),
-    observe.BestEffort(telemetry.Sink, reportObserverError),
+    telemetryAsync.Sink,
 )
 result, err := runtime.RunStream(ctx, input, sink)
+if err := telemetryAsync.Shutdown(shutdownCtx); err != nil {
+    reportObserverError(err)
+}
 ```
 
-诊断 Error Handler 不能再次写入同一个失败 Sink。Best Effort 不会把阻塞 Observer 自动变成异步；有界异步导出仍是应用或 Provider 的责任。
+诊断 Error Handler 不能再次写入同一个失败 Sink。Best Effort 只隔离失败，不会把阻塞 Observer 自动变成异步；普通 Telemetry 需要有界排队时使用 `AsyncSink`。

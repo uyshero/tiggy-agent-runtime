@@ -6,7 +6,7 @@
 
 Recording 不等于执行 Replay。本包只支持 Inspect 和结构校验，绝不调用 Model、Tool、Memory Port 或其他外部效果。Re-execute 必须由独立产品 Policy 处理 Credential、Cost、Non-determinism、Permission 和之前可能已发生但结果不明确的副作用。
 
-应用在一个 `Journal` 上创建可并发复用的 `Recorder`，再把 `Recorder.Sink` 传给 `RunStream`/`Continue`，也可与其他 Observer 组合。直接 Recorder 是严格模式：Validation、Sanitization 或 Journal Failure 按 Event Sink Failure 处理。使用 `observe.BestEffort` 表示显式选择运行可用性而放弃完整记录；当 Recording 是 Audit Requirement 时不能这样配置。
+应用在一个 `Journal` 上创建可并发复用的 `Recorder`，再把 `Recorder.Sink` 传给 `RunStream`/`Continue`，也可与其他 Observer 组合。直接 Recorder 是严格模式：Validation、Sanitization 或 Journal Failure 按 Event Sink Failure 处理。使用 `observe.BestEffort` 或 `observe.AsyncSink` 表示显式选择运行可用性而放弃完整记录；当 Recording 是 Audit Requirement 时不能这样配置。如果应用为了本地诊断而故意使用异步 Recording，必须接受可能 Drop、显式调用 `Flush`/`Shutdown`，并把结果视为非审计证据。
 
 ## Recording Protocol
 

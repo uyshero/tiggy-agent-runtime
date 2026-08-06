@@ -6,7 +6,7 @@
 
 Recording is not execution replay. The package supports inspection and structural validation only. It never invokes a Model, Tool, Memory Port, or other external effect. Re-execution would require separate product policy for credentials, cost, non-determinism, permissions, and ambiguous prior side effects.
 
-Applications create one concurrency-safe `Recorder` over a `Journal` and pass `Recorder.Sink` to `RunStream`/`Continue`, optionally composed with other observers. A direct Recorder is strict: validation, sanitization, or Journal failure follows Event Sink failure semantics. Wrapping it in `observe.BestEffort` explicitly chooses availability over complete recording and is inappropriate when recording is an audit requirement.
+Applications create one concurrency-safe `Recorder` over a `Journal` and pass `Recorder.Sink` to `RunStream`/`Continue`, optionally composed with other observers. A direct Recorder is strict: validation, sanitization, or Journal failure follows Event Sink failure semantics. Wrapping it in `observe.BestEffort` or `observe.AsyncSink` explicitly chooses availability over complete recording and is inappropriate when recording is an audit requirement. If an application intentionally uses asynchronous recording for local diagnostics, it must accept possible drops, call `Flush`/`Shutdown`, and treat the result as non-audit evidence.
 
 ## Recording Protocol
 

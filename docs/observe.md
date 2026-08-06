@@ -8,6 +8,8 @@ The Event Sink remains synchronous. A Sink passed directly to Agent is strict: e
 
 `observe.Chain` invokes non-nil Sinks in order. Every Sink receives an owned Event/Payload copy, so one Observer cannot mutate the next Observer's input. Chain stops at the first strict error. These helpers start no goroutines, own no queues, and cannot preempt a blocking callback.
 
+`observe.AsyncSink` is the official bounded asynchronous wrapper for operational telemetry. It owns a single worker, clones Events on ingress, supports a queue size, `drop_newest`, `drop_oldest`, or `block` overflow policy, and exposes `Flush(ctx)` plus `Shutdown(ctx)` so applications can drain accepted Events during graceful shutdown. Drop policies report overflow through `OnError` and return nil; `block` preserves backpressure and can still block the Run when the queue is full. AsyncSink cannot preempt a delegate Sink that is already blocked; it only moves delivery behind a bounded queue. Strict audit and required recording should keep using direct synchronous Sinks.
+
 New Event types are forward-compatible. LogSink records only their envelope, while Metrics and OTel ignore unknown payloads until an explicit privacy and cardinality mapping exists.
 
 ## Structured Logging
@@ -59,12 +61,23 @@ telemetry, err := tiggyotel.New(tiggyotel.Options{
 if err != nil {
     return err
 }
+telemetryAsync, err := observe.NewAsyncSink(telemetry.Sink, observe.AsyncOptions{
+    QueueSize:  1024,
+    DropPolicy: observe.AsyncDropNewest,
+    OnError:    reportObserverError,
+})
+if err != nil {
+    return err
+}
 
 sink := observe.Chain(
     observe.BestEffort(logSink, reportObserverError),
-    observe.BestEffort(telemetry.Sink, reportObserverError),
+    telemetryAsync.Sink,
 )
 result, err := runtime.RunStream(ctx, input, sink)
+if err := telemetryAsync.Shutdown(shutdownCtx); err != nil {
+    reportObserverError(err)
+}
 ```
 
-The diagnostic error handler must not emit through the same failing Sink. Best effort does not make a blocking observer asynchronous; bounded asynchronous export remains an application/Provider responsibility.
+The diagnostic error handler must not emit through the same failing Sink. Best effort contains failures but does not make a blocking observer asynchronous; use `AsyncSink` when ordinary telemetry needs bounded queueing.
