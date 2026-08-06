@@ -112,6 +112,8 @@ Todo accepts a bounded run-local checklist snapshot and returns the updated snap
 
 The input accepts an optional `state` snapshot, so the model can thread the prior tool result back into a later call. Supported actions are `list`, `add`, `update`, `complete`, `remove`, and `clear`. The returned text includes the current checklist, while `Result.State` carries the machine-readable snapshot with `version`, `next_id`, and `items`.
 
+Applications and tests can call `builtin.ExtractLatestTodoState(messages)` to recover the latest successful Todo snapshot from Agent history. This helper only reads Tool Result state and validates the snapshot; it does not persist, merge, or schedule tasks.
+
 Todo items are bounded by count and title size. It is intended as a small execution aid, not as a database-backed task system.
 
 ## Glob and Grep

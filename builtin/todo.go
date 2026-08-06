@@ -1,9 +1,11 @@
 package builtin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/uyshero/tiggy-agent-runtime/message"
@@ -75,7 +77,7 @@ func (t *TodoTool) Definition() model.ToolDefinition {
 		InputSchema: json.RawMessage(fmt.Sprintf(`{
 			"type":"object",
 			"properties":{
-				"action":{"type":"string","enum":["list","add","update","complete","remove","clear"]},
+				"action":{"type":"string","enum":["list","snapshot","add","update","complete","remove","clear"]},
 				"state":{
 					"type":"object",
 					"properties":{
@@ -209,6 +211,42 @@ func (t *TodoTool) Execute(ctx context.Context, arguments json.RawMessage) (tool
 		Content: []message.Content{{Type: message.ContentText, Text: renderTodoText(summary, state.Items)}},
 		State:   stateJSON,
 	}, nil
+}
+
+// ExtractLatestTodoState 从消息历史中提取最近一次成功 builtin.todo Tool Result
+// 携带的结构化状态。它不执行工具、不修改消息，也不把 Todo 变成持久化任务系统；
+// 调用方可用它在测试、UI 或应用层恢复 run-local checklist 的当前快照。
+func ExtractLatestTodoState(messages []message.Message) (TodoState, bool, error) {
+	for messageIndex := len(messages) - 1; messageIndex >= 0; messageIndex-- {
+		contents := messages[messageIndex].Content
+		for contentIndex := len(contents) - 1; contentIndex >= 0; contentIndex-- {
+			result := contents[contentIndex].ToolResult
+			if result == nil || result.Name != TodoToolName || result.IsError {
+				continue
+			}
+			if len(result.State) == 0 {
+				return TodoState{}, true, fmt.Errorf("todo tool result state is missing")
+			}
+			decoder := json.NewDecoder(bytes.NewReader(result.State))
+			decoder.DisallowUnknownFields()
+			var state TodoState
+			if err := decoder.Decode(&state); err != nil {
+				return TodoState{}, true, fmt.Errorf("todo tool result state: %w", err)
+			}
+			if err := decoder.Decode(&struct{}{}); err != io.EOF {
+				if err == nil {
+					err = fmt.Errorf("multiple JSON values")
+				}
+				return TodoState{}, true, fmt.Errorf("todo tool result state: %w", err)
+			}
+			cloned := cloneTodoState(&state)
+			if err := cloned.Validate(0, 0); err != nil {
+				return TodoState{}, true, fmt.Errorf("todo tool result state: %w", err)
+			}
+			return *cloned, true, nil
+		}
+	}
+	return TodoState{}, false, nil
 }
 
 func cloneTodoState(value *TodoState) *TodoState {

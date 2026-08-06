@@ -112,6 +112,8 @@ Todo 接收一个受限的 run-local 待办列表快照，并把更新后的快�
 
 输入里可以带上可选的 `state` 快照，这样模型就能把上一次工具结果继续线程化到下一次调用。支持的动作是 `list`、`add`、`update`、`complete`、`remove` 和 `clear`。返回文本会显示当前列表，而 `Result.State` 会带上含 `version`、`next_id` 和 `items` 的机器可读快照。
 
+应用和测试可以调用 `builtin.ExtractLatestTodoState(messages)`，从 Agent 历史中恢复最近一次成功 Todo 快照。这个 Helper 只读取并校验 Tool Result state，不负责持久化、合并或调度任务。
+
 Todo 项数量和标题大小都受上限控制。它是一个小型执行辅助工具，不是数据库型任务系统。
 
 ## Glob 与 Grep
