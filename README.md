@@ -94,6 +94,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [MCP Client semantics](./docs/mcp.md)
 - [Skill semantics](./docs/skill.md)
 - [Context Assembly and Instruction Stack](./docs/context-assembly.md)
+- [Context Governance](./docs/context-governance.md)
 - [Context Manager semantics](./docs/contextmanager.md)
 - [Context diagnostics](./docs/context-diagnostics.md)
 - [Dynamic Capability Activation draft](./docs/dynamic-capability-activation.md)

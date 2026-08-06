@@ -80,6 +80,7 @@ Deferred items require separate product requirements and architecture decisions.
 - [x] Context Assembly and Instruction Stack boundary with fixed static segment kinds
 - [x] Instruction Stack aggregate and per-kind byte diagnostics in `model.call.started.context`
 - [x] Agent test-kit example and helper for content-free Instruction Stack budget assertions
+- [x] Context Governance design note covering fixed instructions, structured task state, short-term working memory, external long-term memory, budgets, checkpoints, and references
 - [x] External consumer example focused only on asserting the exact exposed Tool set
 - [x] Approval suspension/resume state-machine documentation
 - [x] Enterprise persistence reference that keeps durable Worker/database concerns outside Core
