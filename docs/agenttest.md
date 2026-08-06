@@ -156,6 +156,37 @@ Zero means "no limit" for that field. The helper checks every
 is missing, invalid, or exceeds any configured ceiling. It does not read the
 model Request body.
 
+Use `ValidateContextBudget` when a test should also guard dynamic context
+growth, such as Tool Definition bytes, Tool argument bytes, recalled Memory
+projections, compression summaries, Tool Result blocks, Artifact references, or
+overall request message counts:
+
+```go
+if err := agenttest.ValidateContextBudget(trace.Events(), agenttest.ContextBudget{
+    InstructionStack: agenttest.InstructionStackBudget{
+        MaxBytes: 8_000,
+    },
+    MaxToolDefinitionBytes:    12_000,
+    MaxToolArgumentBytes:      4_000,
+    MaxTextBytes:              24_000,
+    MaxRequestMessages:        32,
+    MaxProjectedMessages:      32,
+    MaxToolDefinitions:        16,
+    MaxRecalledMemoryMessages: 4,
+    MaxCompressionSummaries:   2,
+    MaxToolResultBlocks:       8,
+    MaxArtifactBlocks:         8,
+}); err != nil {
+    t.Fatal(err)
+}
+```
+
+This is useful as a regression guard for progressive disclosure and context
+assembly work: old dialogue may be compressed, complete Tool Results may be
+offloaded to Artifacts, and Memory may be projected only when relevant, but the
+test can still prove that the final model-visible request stays within an
+agreed shape budget.
+
 ## Test Doubles
 
 | API | Use |
@@ -172,6 +203,7 @@ model Request body.
 | `Trace` | concurrency-safe Event capture through `Trace.Sink` |
 | `ValidateTrace` | lifecycle, pairing, sequence, parent, and terminal-invariant validation |
 | `ValidateInstructionStackBudget` | content-free static instruction byte-budget guard |
+| `ValidateContextBudget` | content-free request-shape guard for instructions, Tool schemas, Memory, summaries, and blocks |
 | `EventTypes` / `DecodePayload` | focused Event assertions without ad hoc JSON handling |
 
 `ScriptedModel.Assert`, `ScriptedModel.Calls`, `FuncMemory`, `FuncTool` arguments, and the Context/Artifact function adapters clone their owned boundary values. `FuncModel` is intentionally a raw `model.Model` callback and adds no extra copy; its implementation must obey the normal Model ownership contract.
@@ -186,6 +218,7 @@ A useful Runtime test checks more than the returned text:
 - `result.State.ValidateComplete()` when inspecting State directly;
 - `agenttest.ValidateTrace(result.Events)` or the Events captured by `Trace`;
 - `agenttest.ValidateInstructionStackBudget` when static instruction growth is a regression risk;
+- `agenttest.ValidateContextBudget` when Tool schemas, Memory projection, compression summaries, or Tool/Artifact blocks could silently expand the model request;
 - a specific typed Event payload when the scenario concerns retry, compression, Memory, or Artifact behavior.
 
 Use `DecodePayload[T]` for typed payload inspection:

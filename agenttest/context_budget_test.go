@@ -73,18 +73,126 @@ func TestValidateInstructionStackBudgetRejectsInvalidBudget(t *testing.T) {
 	}
 }
 
+func TestValidateContextBudgetAcceptsManifestWithinLimits(t *testing.T) {
+	t.Parallel()
+
+	events := []event.Event{
+		contextBudgetEvent(t, "evt_1", event.ModelCallStarted, event.ModelCallPayload{
+			CallID: "model_1", Model: model.Identity{Provider: "test", Model: "scripted"}, Attempt: 1,
+			Context: validBudgetContext(),
+		}),
+	}
+	err := ValidateContextBudget(events, ContextBudget{
+		InstructionStack: InstructionStackBudget{
+			MaxBytes:             100,
+			MaxSystemPromptBytes: 10,
+			MaxProjectBytes:      20,
+			MaxPolicyBytes:       30,
+		},
+		MaxToolDefinitionBytes:    40,
+		MaxToolArgumentBytes:      20,
+		MaxTextBytes:              100,
+		MaxRequestMessages:        6,
+		MaxProjectedMessages:      6,
+		MaxToolDefinitions:        2,
+		MaxRecalledMemoryMessages: 2,
+		MaxCompressionSummaries:   2,
+		MaxToolResultBlocks:       1,
+		MaxArtifactBlocks:         1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateContextBudgetRejectsExceededToolDefinitionBytes(t *testing.T) {
+	t.Parallel()
+
+	events := []event.Event{
+		contextBudgetEvent(t, "evt_1", event.ModelCallStarted, event.ModelCallPayload{
+			CallID: "model_1", Model: model.Identity{Provider: "test", Model: "scripted"}, Attempt: 1,
+			Context: validBudgetContext(),
+		}),
+	}
+	err := ValidateContextBudget(events, ContextBudget{MaxToolDefinitionBytes: 31})
+	if err == nil || !strings.Contains(err.Error(), "ToolDefinitionBytes = 32 exceeds budget 31") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+}
+
+func TestValidateContextBudgetRejectsExceededMemoryAndSummaryCounts(t *testing.T) {
+	t.Parallel()
+
+	events := []event.Event{
+		contextBudgetEvent(t, "evt_1", event.ModelCallStarted, event.ModelCallPayload{
+			CallID: "model_1", Model: model.Identity{Provider: "test", Model: "scripted"}, Attempt: 1,
+			Context: validBudgetContext(),
+		}),
+	}
+	err := ValidateContextBudget(events, ContextBudget{MaxRecalledMemoryMessages: 1, MaxCompressionSummaries: 0})
+	if err == nil || !strings.Contains(err.Error(), "RecalledMemoryMessages = 2 exceeds budget 1") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+	err = ValidateContextBudget(events, ContextBudget{MaxRecalledMemoryMessages: 0, MaxCompressionSummaries: 1})
+	if err == nil || !strings.Contains(err.Error(), "CompressionSummaries = 2 exceeds budget 1") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+	err = ValidateContextBudget(events, ContextBudget{MaxRecalledMemoryMessages: 0, MaxCompressionSummaries: 0, MaxRequestMessages: 5})
+	if err == nil || !strings.Contains(err.Error(), "RequestMessageCount = 6 exceeds budget 5") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+	err = ValidateContextBudget(events, ContextBudget{MaxRecalledMemoryMessages: 0, MaxCompressionSummaries: 0, MaxToolDefinitions: 1})
+	if err == nil || !strings.Contains(err.Error(), "ToolDefinitionCount = 2 exceeds budget 1") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+}
+
+func TestValidateContextBudgetRejectsInvalidBudget(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateContextBudget(nil, ContextBudget{MaxToolArgumentBytes: -1})
+	if err == nil || !strings.Contains(err.Error(), "MaxToolArgumentBytes cannot be negative") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+	err = ValidateContextBudget(nil, ContextBudget{MaxRequestMessages: -1})
+	if err == nil || !strings.Contains(err.Error(), "MaxRequestMessages cannot be negative") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+}
+
+func TestValidateContextBudgetRequiresModelCall(t *testing.T) {
+	t.Parallel()
+
+	events := []event.Event{
+		contextBudgetEvent(t, "evt_1", event.RunStarted, nil),
+	}
+	err := ValidateContextBudget(events, ContextBudget{MaxTextBytes: 100})
+	if err == nil || !strings.Contains(err.Error(), "requires at least one model.call.started") {
+		t.Fatalf("ValidateContextBudget() error = %v", err)
+	}
+}
+
 func validBudgetContext() *event.ModelContextPayload {
 	return &event.ModelContextPayload{
-		ProjectedMessageCount: 1, RequestMessageCount: 1,
-		SystemMessageCount:                1,
-		InternalMessageCount:              1,
+		ProjectedMessageCount: 6, RequestMessageCount: 6,
+		SystemMessageCount:                5,
+		UserMessageCount:                  1,
+		PublicMessageCount:                1,
+		InternalMessageCount:              5,
 		InstructionStackMessages:          1,
 		InstructionStackBytes:             64,
 		InstructionStackSystemPromptBytes: 8,
 		InstructionStackProjectBytes:      12,
 		InstructionStackPolicyBytes:       16,
-		TextBlocks:                        1,
+		RecalledMemoryMessages:            2,
+		CompressionSummaries:              2,
+		TextBlocks:                        6,
 		TextBytes:                         64,
+		ToolArgumentBytes:                 10,
+		ToolResultBlocks:                  1,
+		ArtifactBlocks:                    1,
+		ToolDefinitionCount:               2,
+		ToolDefinitionBytes:               32,
 	}
 }
 

@@ -144,6 +144,30 @@ if err := agenttest.ValidateInstructionStackBudget(trace.Events(), agenttest.Ins
 
 字段为 0 表示不限制该项。Helper 会检查 Trace 中每个 `model.call.started` Manifest；如果 Manifest 缺失、非法，或超过任一配置上限，则返回 Error。它不会读取模型 Request 正文。
 
+如果还希望防止动态上下文膨胀，可以使用 `ValidateContextBudget`。它可以检查 Tool Definition 字节数、Tool 参数字节数、Recall Memory 投影、Compression Summary、Tool Result Block、Artifact 引用，以及整体 Request Message 数量：
+
+```go
+if err := agenttest.ValidateContextBudget(trace.Events(), agenttest.ContextBudget{
+    InstructionStack: agenttest.InstructionStackBudget{
+        MaxBytes: 8_000,
+    },
+    MaxToolDefinitionBytes:    12_000,
+    MaxToolArgumentBytes:      4_000,
+    MaxTextBytes:              24_000,
+    MaxRequestMessages:        32,
+    MaxProjectedMessages:      32,
+    MaxToolDefinitions:        16,
+    MaxRecalledMemoryMessages: 4,
+    MaxCompressionSummaries:   2,
+    MaxToolResultBlocks:       8,
+    MaxArtifactBlocks:         8,
+}); err != nil {
+    t.Fatal(err)
+}
+```
+
+这个 Helper 适合做渐进式暴露和上下文装配的回归门禁：旧对话可以被压缩，完整 Tool Result 可以被外置成 Artifact，Memory 只在相关时投影，但测试仍然能证明最终模型可见的 Request 没有超过约定形态预算。
+
 ## Test Double 一览
 
 | API | 用途 |
@@ -160,6 +184,7 @@ if err := agenttest.ValidateInstructionStackBudget(trace.Events(), agenttest.Ins
 | `Trace` | 通过 `Trace.Sink` 并发安全地捕获 Event |
 | `ValidateTrace` | 校验生命周期、配对、Sequence、Parent 和 Terminal Invariant |
 | `ValidateInstructionStackBudget` | 不含正文的静态指令字节预算门禁 |
+| `ValidateContextBudget` | 不含正文的 Request 形态预算门禁，覆盖指令、Tool Schema、Memory、摘要和 Block |
 | `EventTypes` / `DecodePayload` | 不手写 JSON 解析的定向 Event 断言 |
 
 `ScriptedModel.Assert`、`ScriptedModel.Calls`、`FuncMemory`、`FuncTool` 参数以及 Context/Artifact 函数适配器会复制各自拥有的边界值。`FuncModel` 刻意保持为原始 `model.Model` 回调，不额外复制；其实现必须遵守正常的 Model 所有权契约。
@@ -174,6 +199,7 @@ if err := agenttest.ValidateInstructionStackBudget(trace.Events(), agenttest.Ins
 - 直接检查 State 时执行 `result.State.ValidateComplete()`；
 - 执行 `agenttest.ValidateTrace(result.Events)` 或校验 `Trace` 捕获的 Events；
 - 静态指令膨胀属于回归风险时，执行 `agenttest.ValidateInstructionStackBudget`；
+- Tool Schema、Memory 投影、Compression Summary 或 Tool/Artifact Block 可能让模型请求悄悄变大时，执行 `agenttest.ValidateContextBudget`；
 - 场景涉及 Retry、Compression、Memory 或 Artifact 时，检查对应的强类型 Event Payload。
 
 使用 `DecodePayload[T]` 检查强类型 Payload：
