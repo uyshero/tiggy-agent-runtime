@@ -167,6 +167,7 @@ if err := agenttest.ValidateContextBudget(trace.Events(), agenttest.ContextBudge
 ```
 
 这个 Helper 适合做渐进式暴露和上下文装配的回归门禁：旧对话可以被压缩，完整 Tool Result 可以被外置成 Artifact，Memory 只在相关时投影，但测试仍然能证明最终模型可见的 Request 没有超过约定形态预算。
+完整可编译示例见 [examples/agenttest-basic/agent_test.go](../examples/agenttest-basic/agent_test.go) 中的 `TestValidateContextBudgetForProjectedRequest`。
 
 ## Test Double 一览
 

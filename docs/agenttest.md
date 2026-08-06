@@ -185,7 +185,9 @@ This is useful as a regression guard for progressive disclosure and context
 assembly work: old dialogue may be compressed, complete Tool Results may be
 offloaded to Artifacts, and Memory may be projected only when relevant, but the
 test can still prove that the final model-visible request stays within an
-agreed shape budget.
+agreed shape budget. The complete compiled example is
+`TestValidateContextBudgetForProjectedRequest` in
+[examples/agenttest-basic/agent_test.go](../examples/agenttest-basic/agent_test.go).
 
 ## Test Doubles
 

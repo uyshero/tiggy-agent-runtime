@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/agenttest"
 	"github.com/uyshero/tiggy-agent-runtime/contextassembly"
 	"github.com/uyshero/tiggy-agent-runtime/event"
+	"github.com/uyshero/tiggy-agent-runtime/memory"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
 	"github.com/uyshero/tiggy-agent-runtime/tool"
@@ -287,10 +289,114 @@ func TestConsumerSelectsToolGroupsBeforeRun(t *testing.T) {
 	}
 }
 
+func TestValidateContextBudgetForProjectedRequest(t *testing.T) {
+	scope := memory.Scope{Namespace: "workspace", Key: "tenant-1:user-1"}
+	memoryPort := agenttest.FuncMemory{
+		RecallFunc: func(_ context.Context, request memory.RecallRequest) (memory.RecallResult, error) {
+			if request.Scope != scope {
+				return memory.RecallResult{}, fmt.Errorf("memory scope = %#v, want %#v", request.Scope, scope)
+			}
+			return memory.RecallResult{Items: []memory.Item{{
+				ID:         "memory_1",
+				Scope:      scope,
+				Text:       "The user prefers concise answers with concrete next steps.",
+				Provenance: memory.Provenance{Source: "profile"},
+			}}}, nil
+		},
+	}
+	kit, err := toolkit.New(exampleTool("search"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := agenttest.NewScriptedModel(agenttest.ModelStep{
+		Assert: func(request model.Request) error {
+			if len(request.Tools) != 1 || request.Tools[0].Name != "search" {
+				return fmt.Errorf("tools = %#v, want search", request.Tools)
+			}
+			if !requestContainsText(request, "prefers concise answers") {
+				return fmt.Errorf("recalled memory missing from projected request")
+			}
+			return nil
+		},
+		Response: model.Response{
+			Message: message.Message{Content: []message.Content{{
+				Type: message.ContentText, Text: "done",
+			}}},
+			StopReason: model.StopReasonComplete,
+		},
+	})
+	runtime, err := agent.New(agent.Config{
+		Name:          "context-budget-test",
+		SystemPrompt:  "Follow runtime rules.",
+		Model:         provider,
+		ModelIdentity: model.Identity{Provider: "test", Model: "scripted"},
+		Toolkit:       kit,
+		Memory:        memoryPort,
+		MemoryScope:   scope,
+		MemoryOptions: memory.Options{RecallLimit: 1},
+		IDs:           agenttest.SequentialIDs(),
+		Now: agenttest.StepClock(
+			time.Unix(1_700_000_000, 0),
+			time.Millisecond,
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var trace agenttest.Trace
+	result, err := runtime.RunStream(context.Background(), message.Message{
+		Role:       message.RoleUser,
+		Visibility: message.VisibilityPublic,
+		Content:    []message.Content{{Type: message.ContentText, Text: "answer with relevant context"}},
+	}, trace.Sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != agent.StatusCompleted {
+		t.Fatalf("status = %q, want completed", result.Status)
+	}
+	if err := agenttest.ValidateTrace(trace.Events()); err != nil {
+		t.Fatalf("trace: %v", err)
+	}
+	contextPayload := firstModelContext(t, trace.Events())
+	if contextPayload.RecalledMemoryMessages != 1 {
+		t.Fatalf("recalled memory messages = %d, want 1", contextPayload.RecalledMemoryMessages)
+	}
+	if contextPayload.ToolDefinitionCount != 1 || contextPayload.ToolDefinitionBytes <= 0 {
+		t.Fatalf("tool definition manifest = %#v", contextPayload)
+	}
+	if err := agenttest.ValidateContextBudget(trace.Events(), agenttest.ContextBudget{
+		InstructionStack: agenttest.InstructionStackBudget{
+			MaxBytes: 1_000,
+		},
+		MaxToolDefinitionBytes:    1_000,
+		MaxTextBytes:              2_000,
+		MaxRequestMessages:        4,
+		MaxProjectedMessages:      4,
+		MaxToolDefinitions:        1,
+		MaxRecalledMemoryMessages: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func hasToolResult(messages []message.Message, callID string) bool {
 	for _, value := range messages {
 		for _, content := range value.Content {
 			if content.ToolResult != nil && content.ToolResult.CallID == callID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func requestContainsText(request model.Request, text string) bool {
+	for _, value := range request.Messages {
+		for _, content := range value.Content {
+			if content.Type == message.ContentText && strings.Contains(content.Text, text) {
 				return true
 			}
 		}
