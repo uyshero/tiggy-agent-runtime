@@ -79,6 +79,23 @@ A custom `ModelFailurePolicy` must be concurrency-safe. Invalid decisions and pa
 
 Panics from Model, Tool, Memory, failure-policy, and Event Sink boundaries become structured failures. Injected Ports are long-lived dependencies and are not closed by the runtime. Adapters must release per-call response bodies, streams, and temporary resources before returning and must honor Context cancellation.
 
+## Durable Transition Hook
+
+Optional `Config.TransitionHook` synchronously checkpoints critical Model, Tool
+effect, State commit, and approval Resume boundaries. Runtime neither enters the
+next external effect nor replaces candidate State before Hook success. Hook
+errors and panics become fail-closed `transition/*` RunErrors.
+
+Transition JSON metadata contains only IDs, run-local sequence, State/Tool/
+argument digests, effect class, outcome, and idempotency keys. Complete State,
+Model request/response, and Tool arguments/results are delivered through
+`json:"-"` private fields for platform encryption. Undeclared Tools default to
+`non_reconcilable_write`. The stable effect key is also available to Tool
+adapters through `ToolTransitionFromContext`.
+
+See [Durable Transition Hook](./transition.md) for ordering, recovery, and
+security rules.
+
 Context planning uses the same cancellation boundary. Counter/Planner failures are run-fatal because proceeding would invalidate the configured context guarantee. `context.prepare.started/prepared` are balanced on ready, overflow, error, and cancellation paths.
 
 On overflow, a configured Compressor gets one attempt, followed by mandatory replanning. Ordinary same-target retries reuse the compressed view; Fallback targets restart from full State with their own Planner and optional Compressor. When explicitly enabled, a Provider context-length rejection that escaped preflight may compress the failed request view once, replan it, and consume one more `MaxModelCalls` slot. A second rejection is not compressed again. Compression errors, invalid Decisions, cancellation, insufficient reduction, and Event Sink failures are fail-closed and emit a balanced `context.compression.started/completed|failed` operation before termination.
@@ -100,9 +117,9 @@ The optional `record.Recorder` is another strict Sink consumer. It writes each a
 
 ## Current Non-goals
 
-State and events provide in-process correctness and diagnostics. Approval State
-is serializable for application-managed persistence, but Core does not promise
-crash recovery, single-resumer coordination, cross-process replay, exactly-once
-external side effects, or a database-backed durable state machine. For one
-possible database and Worker design, see
+State and events provide in-process correctness and diagnostics. The optional
+Transition Hook lets a platform synchronously persist recovery checkpoints, but
+Core still does not provide a database, single-resumer coordination,
+cross-process automatic replay, exactly-once external side effects, or a durable
+Worker state machine. For one possible database and Worker design, see
 [Enterprise Runtime persistence reference](./enterprise-runtime.md).

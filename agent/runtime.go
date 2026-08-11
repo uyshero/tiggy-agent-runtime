@@ -69,6 +69,7 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 
 	runID := a.config.IDs("run")
 	emit := &emitter{runID: runID, ids: a.config.IDs, now: a.config.Now, sink: sink}
+	transitions := &transitionEmitter{hook: a.config.TransitionHook, runID: runID, ids: a.config.IDs, now: a.config.Now}
 	state := previous.Clone() // 不修改调用方持有的 previous
 	view, viewErr := a.toolView()
 	modelCalls := 0                         // 累计模型调用次数（含重试）
@@ -211,7 +212,9 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 		if err := nextState.Validate(); err != nil {
 			return finish(StatusFailed, "invalid_state", &RunError{Class: ErrorInvalidInput, Code: "invalid_state", SafeMessage: "The Agent input conflicts with the previous state.", Cause: err}, nil)
 		}
-		state = nextState
+		if commitErr := a.commitStateTransition(ctx, transitions, &state, nextState, "input_appended", ""); commitErr != nil {
+			return finish(StatusFailed, "transition_failed", commitErr, nil)
+		}
 		recallInput = normalized
 	} else {
 		// ---- Resume：恢复挂起的 Tool 批次 ----
@@ -229,6 +232,14 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 			// Toolkit 定义或参数摘要变了：拒绝执行，仍保持挂起。
 			return finish(StatusSuspended, "approval_toolkit_mismatch", &RunError{Class: ErrorInvalidInput, Code: "approval_toolkit_mismatch", SafeMessage: "The current Toolkit does not match the suspended approval continuation.", Cause: bindingErr}, nil)
 		}
+		resumeBindings, bindingErr := a.transitionToolBindings(state, view, resumedCalls)
+		if bindingErr == nil {
+			bindingErr = validateApprovalTransitionBindings(resumedPlan, resumeBindings)
+		}
+		if bindingErr != nil {
+			return finish(StatusSuspended, "approval_toolkit_mismatch", &RunError{Class: ErrorInvalidInput, Code: "approval_toolkit_mismatch", SafeMessage: "The current Tool effect binding does not match the suspended approval continuation.", Cause: bindingErr}, nil)
+		}
+		continuationID := state.Suspension.ID
 		turnStart = state.Suspension.TurnStart
 		if turnStart >= len(state.Messages) || state.Messages[turnStart].Role != message.RoleUser {
 			return finish(StatusFailed, "invalid_suspended_state", &RunError{Class: ErrorInvalidInput, Code: "invalid_suspended_state", SafeMessage: "The approval continuation does not identify its original user turn."}, nil)
@@ -253,7 +264,10 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 		if emit.sinkErr != nil {
 			return finish(StatusFailed, "event_sink_failed", &RunError{Class: ErrorEventSink, Code: "event_sink_failed", SafeMessage: "The event consumer failed before approved Tools executed.", Cause: emit.sinkErr}, nil)
 		}
-		state.Suspension = nil // 决议已应用，清除挂起标记后再执行工具
+		// 只有持久化 continuation consumed 成功后才清除挂起标记。
+		if consumeErr := a.consumeContinuation(ctx, transitions, &state, continuationID); consumeErr != nil {
+			return finish(StatusSuspended, "transition_failed", consumeErr, nil)
+		}
 	}
 
 	// 按本轮 User 输入做 Memory 回忆；失败策略由 MemoryOptions.RecallFailureMode 决定。
@@ -266,7 +280,11 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 	}
 	// Resume 路径：先执行已决议的工具批次，再进入正常模型循环。
 	if len(resumedCalls) > 0 {
-		stop := a.executeToolBatch(ctx, runID, &state, view, resumedCalls, resumedPlan, emit, startedTools, &toolCalls)
+		bindings, batchDigest, freezeErr := a.freezeToolBatch(ctx, transitions, state, view, resumedCalls)
+		if freezeErr != nil {
+			return finish(StatusFailed, "transition_failed", freezeErr, nil)
+		}
+		stop := a.executeToolBatch(ctx, runID, &state, view, resumedCalls, resumedPlan, bindings, batchDigest, transitions, emit, startedTools, &toolCalls)
 		if stop != nil {
 			return finish(stop.status, stop.reason, stop.err, nil)
 		}
@@ -283,7 +301,7 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 		iterations++
 		// 回忆投影只注入模型请求，不写进持久 State（避免污染对话账本）。
 		modelMessages := projectRecalledMemory(state.Messages, recall.projection)
-		generation := a.generateModel(ctx, runID, modelMessages, view.Definitions(), emit, &modelCalls)
+		generation := a.generateModel(ctx, runID, state, modelMessages, view.Definitions(), transitions, emit, &modelCalls)
 		if generation.err != nil {
 			if generation.canceled {
 				return finish(StatusCanceled, generation.reason, generation.err, nil)
@@ -311,7 +329,12 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 			})
 			return finish(StatusFailed, "invalid_model_response", runtimeError, nil)
 		}
-		state = nextState
+		if commitErr := a.commitStateTransition(ctx, transitions, &state, nextState, "model_response_committed", generation.transitionID); commitErr != nil {
+			_, _ = emit.emit(event.ModelCallCompleted, generation.startedID, event.ModelCallPayload{
+				CallID: generation.callID, Model: generation.target, Attempt: generation.attempt, Status: "failed", Error: eventError(commitErr),
+			})
+			return finish(StatusFailed, "transition_failed", commitErr, nil)
+		}
 		if err := a.checkUsage(state.Usage); err != nil {
 			_, _ = emit.emit(event.ModelCallCompleted, generation.startedID, event.ModelCallPayload{
 				CallID: generation.callID, Model: generation.target, Attempt: generation.attempt, Status: "completed",
@@ -361,10 +384,21 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 			}
 			return finish(StatusFailed, "approval_policy_failed", approvalErr, nil)
 		}
+		bindings, batchDigest, freezeErr := a.freezeToolBatch(ctx, transitions, state, view, calls)
+		if freezeErr != nil {
+			return finish(StatusFailed, "transition_failed", freezeErr, nil)
+		}
+		if bindingErr := bindApprovalPlanTransitions(plan, bindings); bindingErr != nil {
+			return finish(StatusFailed, "invalid_tool_plan", &RunError{Class: ErrorInternal, Code: "invalid_tool_plan", SafeMessage: "The Agent could not bind its Tool execution plan.", Cause: bindingErr}, nil)
+		}
 		if requiresApproval(plan) {
 			// 整批挂起：不执行任何工具，发出 ApprovalRequired，等 Resume。
 			suspension := approval.Suspension{ID: a.config.IDs("suspension"), TurnStart: turnStart, Calls: plan}
-			state.Suspension = &suspension
+			nextState := state.Clone()
+			nextState.Suspension = &suspension
+			if commitErr := a.commitStateTransition(ctx, transitions, &state, nextState, "approval_suspended", ""); commitErr != nil {
+				return finish(StatusFailed, "transition_failed", commitErr, nil)
+			}
 			for _, pending := range plan {
 				if pending.Behavior != approval.BehaviorRequire {
 					continue
@@ -377,7 +411,7 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 			}
 			return finish(StatusSuspended, "approval_required", nil, nil)
 		}
-		stop := a.executeToolBatch(ctx, runID, &state, view, calls, plan, emit, startedTools, &toolCalls)
+		stop := a.executeToolBatch(ctx, runID, &state, view, calls, plan, bindings, batchDigest, transitions, emit, startedTools, &toolCalls)
 		if stop != nil {
 			return finish(stop.status, stop.reason, stop.err, nil)
 		}
@@ -486,6 +520,9 @@ func (a *Agent) executeToolBatch(
 	view toolkit.View,
 	calls []message.ToolCall,
 	plan []approval.PendingCall,
+	bindings []TransitionToolBinding,
+	batchDigest string,
+	transitions *transitionEmitter,
 	emit *emitter,
 	startedTools map[string]string,
 	toolCalls *int,
@@ -495,8 +532,19 @@ func (a *Agent) executeToolBatch(
 			Class: ErrorInternal, Code: "invalid_tool_plan", SafeMessage: "The Agent produced an invalid Tool execution plan.", Cause: err,
 		}}
 	}
+	if len(bindings) != len(calls) || !validSHA256Digest(batchDigest) {
+		return &toolExecutionStop{status: StatusFailed, reason: "invalid_tool_plan", err: &RunError{
+			Class: ErrorInternal, Code: "invalid_tool_transition", SafeMessage: "The Agent produced invalid Tool transition bindings.",
+		}}
+	}
+	if err := validateApprovalTransitionBindings(plan, bindings); err != nil {
+		return &toolExecutionStop{status: StatusFailed, reason: "invalid_tool_plan", err: &RunError{
+			Class: ErrorInternal, Code: "invalid_tool_transition", SafeMessage: "The Agent produced inconsistent Tool effect bindings.", Cause: err,
+		}}
+	}
 	for index, call := range calls {
 		planned := plan[index]
+		binding := bindings[index]
 		// Require 不应进入本函数；挂起应在 run 循环里提前返回。
 		if planned.Behavior == approval.BehaviorRequire {
 			return &toolExecutionStop{status: StatusFailed, reason: "invalid_tool_plan", err: &RunError{
@@ -524,8 +572,8 @@ func (a *Agent) executeToolBatch(
 			if planned.Reason != "" {
 				safeMessage += " " + planned.Reason
 			}
-			if err := a.appendToolError(state, call, code, safeMessage, false); err != nil {
-				return &toolExecutionStop{status: StatusFailed, reason: "invalid_state", err: &RunError{Class: ErrorInternal, Code: "invalid_state", SafeMessage: "The Agent could not record an approval result.", Cause: err}}
+			if commitErr := a.appendToolErrorTransition(ctx, transitions, state, call, code, safeMessage, false, "approval_result_committed", ""); commitErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
 			}
 			_, _ = emit.emit(event.ToolCallCompleted, toolStarted.ID, event.ToolCallPayload{
 				CallID: call.ID, Name: call.Name, Status: "completed", IsError: true,
@@ -538,12 +586,46 @@ func (a *Agent) executeToolBatch(
 			continue
 		}
 
+		preparedTransition, transitionErr := commitToolEffectTransition(
+			ctx, transitions, TransitionToolEffectPrepared, *state, binding, "", "prepared",
+			TransitionPrivateData{ToolArguments: call.Arguments},
+		)
+		if transitionErr != nil {
+			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: transitionErr}
+		}
+		startedTransition, transitionErr := commitToolEffectTransition(
+			ctx, transitions, TransitionToolEffectStarted, *state, binding, preparedTransition.ID, "started",
+			TransitionPrivateData{ToolArguments: call.Arguments},
+		)
+		if transitionErr != nil {
+			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: transitionErr}
+		}
+
 		// 真正执行：Schema 校验与分发在 toolkit.View.Call 内完成。
-		toolResult, toolErr := view.Call(ctx, call)
+		toolContext := withToolExecutionTransition(ctx, runID, binding)
+		toolResult, toolErr := view.Call(toolContext, call)
+		postEffectContext := context.WithoutCancel(ctx)
+		commitEffectOutcome := func(kind TransitionType, outcome string, result *tool.Result) (Transition, *RunError) {
+			private := TransitionPrivateData{ToolArguments: call.Arguments, ToolResult: result}
+			terminal, hookErr := commitToolEffectTransition(
+				postEffectContext, transitions, kind, *state, binding, startedTransition.ID, outcome, private,
+			)
+			if hookErr != nil && kind == TransitionToolEffectCompleted {
+				// completed 未能持久化时，只能保守标记为 indeterminate；绝不继续下一外部动作。
+				_, _ = commitToolEffectTransition(
+					postEffectContext, transitions, TransitionToolEffectIndeterminate, *state, binding, startedTransition.ID, "completion_unpersisted", private,
+				)
+			}
+			return terminal, hookErr
+		}
 		if ctx.Err() != nil {
 			// 调用期间取消：补 canceled 结果并终止 Run。
-			if err := a.appendToolError(state, call, "canceled", "Tool execution was canceled.", false); err != nil {
-				return &toolExecutionStop{status: StatusFailed, reason: "invalid_state", err: &RunError{Class: ErrorInternal, Code: "invalid_state", SafeMessage: "The Agent could not record a tool result.", Cause: err}}
+			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, "canceled", nil)
+			if hookErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
+			}
+			if commitErr := a.appendToolErrorTransition(postEffectContext, transitions, state, call, "canceled", "Tool execution was canceled.", false, "tool_result_committed", terminal.ID); commitErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
 			}
 			_, _ = emit.emit(event.ToolCallCompleted, toolStarted.ID, event.ToolCallPayload{CallID: call.ID, Name: call.Name, Status: "canceled", IsError: true})
 			delete(startedTools, call.ID)
@@ -554,8 +636,12 @@ func (a *Agent) executeToolBatch(
 			var safe *tool.Error
 			if !errors.As(toolErr, &runtimeFailure) && errors.As(toolErr, &safe) {
 				// 模型可处理错误：写入 Tool Result，继续同批/下一轮模型。
-				if err := a.appendToolError(state, call, safe.Code, safe.SafeMessage, safe.Retryable); err != nil {
-					return &toolExecutionStop{status: StatusFailed, reason: "invalid_state", err: &RunError{Class: ErrorInternal, Code: "invalid_state", SafeMessage: "The Agent could not record a tool result.", Cause: err}}
+				terminal, hookErr := commitEffectOutcome(TransitionToolEffectCompleted, "tool_error", nil)
+				if hookErr != nil {
+					return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
+				}
+				if commitErr := a.appendToolErrorTransition(postEffectContext, transitions, state, call, safe.Code, safe.SafeMessage, safe.Retryable, "tool_result_committed", terminal.ID); commitErr != nil {
+					return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
 				}
 				_, _ = emit.emit(event.ToolCallCompleted, toolStarted.ID, event.ToolCallPayload{
 					CallID: call.ID, Name: call.Name, Status: "completed", IsError: true, Retryable: safe.Retryable,
@@ -568,13 +654,21 @@ func (a *Agent) executeToolBatch(
 				continue
 			}
 			// RuntimeError / 未知错误：终止整个 Run（不可安全暴露细节给模型）。
-			if err := a.appendToolError(state, call, "runtime_failure", "Tool execution failed because of a runtime error.", false); err != nil {
-				return &toolExecutionStop{status: StatusFailed, reason: "invalid_state", err: &RunError{Class: ErrorInternal, Code: "invalid_state", SafeMessage: "The Agent could not record a tool result.", Cause: err}}
+			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, "runtime_failure", nil)
+			if hookErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
+			}
+			if commitErr := a.appendToolErrorTransition(postEffectContext, transitions, state, call, "runtime_failure", "Tool execution failed because of a runtime error.", false, "tool_result_committed", terminal.ID); commitErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
 			}
 			runtimeError := &RunError{Class: ErrorToolRuntime, Code: "tool_runtime_failed", SafeMessage: "A tool runtime failed.", Cause: toolErr}
 			_, _ = emit.emit(event.ToolCallCompleted, toolStarted.ID, event.ToolCallPayload{CallID: call.ID, Name: call.Name, Status: "failed", IsError: true, Error: eventError(runtimeError)})
 			delete(startedTools, call.ID)
 			return &toolExecutionStop{status: StatusFailed, reason: "tool_runtime_failed", err: runtimeError}
+		}
+		terminal, hookErr := commitEffectOutcome(TransitionToolEffectCompleted, "succeeded", &toolResult)
+		if hookErr != nil {
+			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
 		}
 
 		// 成功：可能把大结果卸载为 Artifact，再写入 State。
@@ -589,8 +683,8 @@ func (a *Agent) executeToolBatch(
 			if projection.canceled {
 				code, messageText, status = "canceled", "Tool Result offload was canceled.", "canceled"
 			}
-			if err := a.appendToolError(state, call, code, messageText, false); err != nil {
-				return &toolExecutionStop{status: StatusFailed, reason: "invalid_state", err: &RunError{Class: ErrorInternal, Code: "invalid_state", SafeMessage: "The Agent could not record an Artifact failure.", Cause: err}}
+			if commitErr := a.appendToolErrorTransition(postEffectContext, transitions, state, call, code, messageText, false, "tool_result_committed", terminal.ID); commitErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
 			}
 			_, _ = emit.emit(event.ToolCallCompleted, toolStarted.ID, event.ToolCallPayload{CallID: call.ID, Name: call.Name, Status: status, IsError: true, Error: eventError(projection.err)})
 			delete(startedTools, call.ID)
@@ -599,8 +693,8 @@ func (a *Agent) executeToolBatch(
 			}
 			return &toolExecutionStop{status: StatusFailed, reason: projection.reason, err: projection.err}
 		}
-		if err := a.appendToolResult(state, call, projection.result); err != nil {
-			return &toolExecutionStop{status: StatusFailed, reason: "invalid_state", err: &RunError{Class: ErrorInternal, Code: "invalid_state", SafeMessage: "The Agent could not record a tool result.", Cause: err}}
+		if commitErr := a.appendToolResultTransition(postEffectContext, transitions, state, call, projection.result, "tool_result_committed", terminal.ID); commitErr != nil {
+			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
 		}
 		_, completedEmitErr := emit.emit(event.ToolCallCompleted, toolStarted.ID, event.ToolCallPayload{CallID: call.ID, Name: call.Name, Status: "completed"})
 		delete(startedTools, call.ID)

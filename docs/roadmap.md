@@ -87,6 +87,19 @@ Deferred items require separate product requirements and architecture decisions.
 
 Dynamic activation during a running Task is intentionally deferred until a separate capability-transition protocol is accepted. See [Progressive capability disclosure](./progressive-disclosure.md), [Dynamic Capability Activation](./dynamic-capability-activation.md), [ADR 0018](./adr/0018-progressive-capability-disclosure.md), and [ADR 0019](./adr/0019-dynamic-capability-activation.md).
 
+## Candidate: v0.2.x Durable Transition Hook
+
+- [x] Optional synchronous fail-closed Transition Hook
+- [x] Model prepared/completed and State commit checkpoints
+- [x] Frozen Tool batch and effect prepared/started/completed/indeterminate transitions
+- [x] Stable Tool effect classes and Resume-stable idempotency keys
+- [x] Encrypted-storage private payload boundary outside JSON metadata
+- [x] Exact approval continuation-consumption checkpoint
+- [x] Deterministic pre-effect, post-effect, panic, and Resume failure tests
+- [ ] Managed platform PostgreSQL adapter, lease/fencing integration, and operator reconciliation workflow
+
+The unchecked item remains an Enterprise responsibility and must enter through a released SemVer dependency; Core does not import the platform implementation. See [Durable Transition Hook](./transition.md) and [ADR 0020](./adr/0020-durable-transition-hook.md).
+
 ## Draft: v0.2.0 Dynamic Capability Activation
 
 - [ ] Activation request/decision contract covering Tool, MCP, and Skill sources

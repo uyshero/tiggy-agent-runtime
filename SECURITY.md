@@ -2,13 +2,14 @@
 
 ## Supported Versions
 
-Security fixes are provided for the latest `0.1.x` release line. Pre-release
+Security fixes are provided for the latest `0.2.x` release line. Pre-release
 commits and older release lines may receive fixes only when the maintainers
 explicitly announce support.
 
 | Version | Supported |
 | --- | --- |
-| `0.1.x` | Yes |
+| `0.2.x` | Yes |
+| `0.1.x` | No |
 | `< 0.1.0` | No |
 
 ## Reporting a Vulnerability

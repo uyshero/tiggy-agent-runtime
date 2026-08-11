@@ -93,7 +93,7 @@ Run / Continue
 Resume
   -> validate suspended State
   -> validate exact approval resolutions
-  -> validate current Toolkit definition digests
+  -> validate current Toolkit definition and Tool effect bindings
      -> mismatch or bad resolution: keep same Suspension and return suspended
      -> valid: clear Suspension, emit approval.resolved, execute original batch
 ```
@@ -119,12 +119,14 @@ Suspension binds each call to:
 - Call ID and Tool name;
 - SHA-256 of Tool name plus exact argument JSON bytes;
 - SHA-256 of the frozen model-visible Tool definition;
+- Tool effect class and Resume-stable idempotency key for new Suspensions;
 - the original current-turn boundary.
 
-Mutation of State arguments or resuming against a different Tool contract
-fails before Tool execution. Core cannot prove that mutable internals behind a
-Tool implementation remained unchanged; adapters must keep their own execution
-contracts stable.
+Mutation of State arguments or resuming against a different Tool contract or
+effect class fails before Tool execution. Suspensions produced by v0.1.2 without
+the additive effect fields remain compatible. Core cannot prove that mutable
+internals behind a Tool implementation remained unchanged; adapters must keep
+their own execution contracts stable.
 
 A Toolkit contract mismatch returns `approval_toolkit_mismatch` while
 preserving the suspended State. No approval is marked resolved and no Memory
@@ -143,7 +145,9 @@ Memory only after it eventually completes.
 ## Persistence Boundary
 
 `State` and `Suspension` are JSON-serializable continuation values, not a
-durable scheduler. Applications that persist them must provide atomic storage,
-authorization, encryption, retention, expiry, single-resumer coordination, and
-Worker wake-up. Core still does not promise crash recovery or exactly-once
+durable scheduler. An optional `TransitionHook` clears Suspension only after a
+successful continuation-consumption checkpoint. Persisting applications still
+own atomic storage, authorization, encryption, retention, expiry,
+single-resumer coordination, and Worker wake-up. See
+[Durable Transition Hook](./transition.md). Core does not promise exactly-once
 external Tool effects.

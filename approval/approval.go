@@ -170,6 +170,8 @@ type PendingCall struct {
 	Tool            string   `json:"tool"`
 	ArgumentsDigest string   `json:"arguments_digest"`
 	ToolDigest      string   `json:"tool_digest"`
+	EffectClass     string   `json:"effect_class,omitempty"`
+	IdempotencyKey  string   `json:"idempotency_key,omitempty"`
 	Behavior        Behavior `json:"behavior"`
 	ApprovalID      string   `json:"approval_id,omitempty"`
 	Reason          string   `json:"reason,omitempty"`
@@ -184,6 +186,14 @@ func (p PendingCall) Validate() error {
 	}
 	if len(p.Reason) > maxReasonBytes {
 		return fmt.Errorf("pending approval reason exceeds %d bytes", maxReasonBytes)
+	}
+	// Both empty is the v0.1.2 compatibility form. New durable continuations
+	// freeze both fields so Resume can reject changed effect semantics.
+	if (p.EffectClass == "") != (p.IdempotencyKey == "") {
+		return fmt.Errorf("pending approval effect binding is incomplete")
+	}
+	if p.EffectClass != "" && (len(p.EffectClass) > 64 || !ValidDigest(p.IdempotencyKey)) {
+		return fmt.Errorf("pending approval effect binding is invalid")
 	}
 	if p.Behavior == BehaviorRequire {
 		if strings.TrimSpace(p.ApprovalID) == "" {

@@ -18,6 +18,7 @@ const (
 	ErrorMemory       ErrorClass = "memory"        // 回忆/观察失败（非 degrade）
 	ErrorLimit        ErrorClass = "limit"         // 迭代/Token/工具次数等上限
 	ErrorEventSink    ErrorClass = "event_sink"    // 事件消费者失败
+	ErrorTransition   ErrorClass = "transition"    // 外部 Transition Hook 持久化失败
 	ErrorCanceled     ErrorClass = "canceled"      // Context 取消或超时
 	ErrorInternal     ErrorClass = "internal"      // Runtime 内部不变量破坏
 )

@@ -2,7 +2,7 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-Tiggy Agent Runtime is an embeddable Go runtime for reliable tool-using agents. It focuses on execution correctness, structured failures, context and memory governance, lifecycle observability, and controlled extensibility.
+Tiggy Agent Runtime is an embeddable Go runtime for reliable tool-using agents. It focuses on execution correctness, structured failures, context and memory governance, lifecycle observability, controlled extensibility, and optional fail-closed durable transition checkpoints.
 
 This repository is a runtime library, not an OpenAPI client SDK:
 
@@ -14,7 +14,7 @@ The generated clients that call Tiggy Manage Agent over HTTP/SSE remain separate
 
 ## Status
 
-P3 implementation is complete. The repository now provides provider-neutral contracts, an optional OpenAI-compatible Adapter, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic fault evaluation. The current version is not yet production-ready.
+P3 implementation is complete. The repository now provides provider-neutral contracts, an optional OpenAI-compatible Adapter, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, an optional fail-closed Durable Transition Hook, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic fault evaluation. The current version is not yet production-ready.
 
 ## Module
 
@@ -73,7 +73,7 @@ Release metadata is audited separately because it includes owner-controlled deci
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.1.1
+make release-verify RELEASE_VERSION=v0.2.0
 ```
 
 See [Release readiness](./docs/release-readiness.md) for the current technical gates, blockers, and owner decisions. Passing the audit is necessary but does not authorize publication.
@@ -89,6 +89,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [SafeSpace semantics](./docs/safespace.md)
 - [Permission Policy semantics](./docs/permission.md)
 - [Tool approval and resume semantics](./docs/approval.md)
+- [Durable Transition Hook](./docs/transition.md)
 - [Enterprise Runtime persistence reference](./docs/enterprise-runtime.md)
 - [Command Runner semantics](./docs/command.md)
 - [MCP Client semantics](./docs/mcp.md)
@@ -132,6 +133,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [ADR 0017: Content-free Model Context diagnostic manifest](./docs/adr/0017-model-context-diagnostic-manifest.md)
 - [ADR 0018: Progressive capability disclosure](./docs/adr/0018-progressive-capability-disclosure.md)
 - [ADR 0019: Dynamic capability activation](./docs/adr/0019-dynamic-capability-activation.md)
+- [ADR 0020: Durable Transition Hook](./docs/adr/0020-durable-transition-hook.md)
 - [Compatibility changelog](./CHANGELOG.md)
 
 ## Relationship to Tiggy Manage Agent

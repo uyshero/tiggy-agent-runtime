@@ -114,6 +114,7 @@ tiggy-manage-agent
 - Memory Recall、Observe 和质量策略；
 - 结构化异常、Retry 和 Fallback；
 - 进程内 Tool 人工审批暂停与精确调用恢复；
+- 可选、同步、失败关闭的外部 Transition Hook 与稳定 Tool 幂等键；
 - 日志、指标、Trace 和 Run Recorder；
 - 确定性测试和故障注入。
 
@@ -123,7 +124,7 @@ tiggy-manage-agent
 - 用户、租户、RBAC 和数据库 Workspace；
 - PostgreSQL Schema 和迁移；
 - Worker Queue、Lease 和分布式调度；
-- 数据库级 Durable Agent State Machine；
+- 数据库级 Durable Agent State Machine、Lease/Fencing 与恢复调度；
 - 企业审批身份、持久化、协调、审计导出和计费；
 - 生成式 OpenAPI Client SDK。
 
@@ -140,7 +141,7 @@ tiggy-manage-agent
 9. 每个 goroutine 和资源都有明确的停止与释放路径。
 10. Event Sequence 和父子关联稳定、可测试。
 
-这些是进程内保证。第一版不承诺进程退出后的自动恢复和外部副作用 exactly-once。
+这些是进程内保证。可选 Transition Hook 提供数据库无关的持久化边界，但 Core 仍不承诺进程退出后的自动恢复和外部副作用 exactly-once。
 
 当前 P1 使用顺序 Tool 执行和同步 Event Sink。`Result.Events` 是完整内部诊断轨迹；Sink 在终止事件前失败会中止 Run，只有终止事件投递失败时保留真实执行状态并单独返回投递错误。详细语义见 [Agent Runtime 语义](./runtime.zh-CN.md)。
 

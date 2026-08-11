@@ -1,12 +1,13 @@
 # Enterprise Runtime 持久化参考设计
 
-本文说明企业级服务如何接住 `agent.State`、`approval.Suspension` 和 Runtime Event，构造数据库级 Agent 执行状态机。它是上层应用参考，不是 Core API 承诺。
+本文说明企业级服务如何接住 `agent.State`、`approval.Suspension`、Durable Transition 和 Runtime Event，构造数据库级 Agent 执行状态机。数据库与 Worker 设计仍是上层应用参考；Transition Hook 本身是可选 Core API。
 
 Core 只提供进程内正确性：
 
 - `Run` / `Continue` / `Resume` 是一次函数调用；
 - `Result.State` 是可序列化的续跑值；
 - `StatusSuspended` 表示本次调用安全终止，并留下审批续跑点；
+- 可选 `TransitionHook` 在 Model、Tool effect、State commit 和 Resume 边界同步交付可加密的检查点；
 - Event 和 Recorder 可用于诊断，但不拥有恢复执行的权力。
 
 Enterprise 需要额外提供持久化、调度、审批身份、租户隔离、审计、Worker 协调和崩溃恢复。
@@ -46,8 +47,9 @@ running/resuming
 | `approval_items` | `run_id`、`approval_id`、`call_id`、`tool`、`arguments_digest`、`tool_digest`、`status`、`decided_by`、`decided_at`、`reason` | 保存企业审批记录、审批人、时间和审计信息。 |
 | `run_events` | `run_id`、`sequence`、`event_type`、`event_json`、`created_at`、`redaction_version` | 保存可查询时间线；可由 Observer 或 Recorder Journal 导入。 |
 | `tool_effects` | `run_id`、`call_id`、`tool`、`status`、`started_at`、`finished_at`、`idempotency_key`、`external_ref` | 跟踪外部副作用，用于崩溃后判定是否需要补偿、查询或人工介入。 |
+| `runtime_transitions` | `run_id`、`transition_id`、`sequence`、`type`、`state_digest`、`metadata_json`、`encrypted_checkpoint`、`encrypted_private_data` | 原子保存 Transition 元数据及加密恢复材料；`run_id + sequence` 和 `transition_id` 唯一。 |
 
-`state_json` 和 `suspension_json` 应加密或按租户隔离保存，因为其中可能包含对话内容、工具调用参数摘要、消息 ID、Artifact 引用和模型可见上下文结构。
+`state_json`、`suspension_json` 和 Transition 私有载荷应加密并按租户隔离保存，因为其中可能包含对话内容、完整 Tool 参数与结果、消息 ID、Artifact 引用和模型可见上下文结构。
 
 ## 挂起落库流程
 
@@ -89,7 +91,7 @@ Worker owns lease
 
 ## 崩溃恢复边界
 
-Enterprise 不能只靠 `Result.State` 宣称 durable execution。必须覆盖这些崩溃点：
+Enterprise 不能只靠 `Result.State` 宣称 durable execution。启用 `TransitionHook` 后，应在同一事务中保存 Transition、任务版本和 Tool effect 索引，并覆盖这些崩溃点：
 
 - 模型请求发出前后；
 - Tool 开始前、执行中、返回后、结果落库前；
@@ -107,10 +109,11 @@ Enterprise 不能只靠 `Result.State` 宣称 durable execution。必须覆盖�
 | --- | --- | --- |
 | 一次调用的状态校验 | 是 | 调用并处理结果 |
 | 可序列化 `State` / `Suspension` | 是 | 加密、落库、版本管理 |
+| 同步 Transition 检查点 | 可选 Hook | 事务、加密、唯一约束、恢复决策 |
 | 审批前零副作用挂起 | 是 | 审批人、通知、过期、审计 |
 | 单恢复者协调 | 否 | DB version、lease、queue |
 | 崩溃恢复 | 否 | Worker recovery、effect reconciliation |
 | 外部副作用 Exactly-once | 否 | 幂等键、外部查询、补偿或人工介入 |
 | 时间线查询 | 提供 Event | 持久化、索引、权限、UI |
 
-一句话：Core 负责“这一次调用有没有做对”；Enterprise 负责“这个任务跨进程、跨人、跨时间能不能可靠地活下去”。
+Hook 事件顺序、私有载荷和效果分类见 [Durable Transition Hook](./transition.zh-CN.md)。一句话：Core 负责提供可验证的执行边界；Enterprise 负责让任务跨进程、跨人、跨时间可靠地活下去。

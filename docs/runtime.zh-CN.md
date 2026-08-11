@@ -71,6 +71,14 @@ agent.Config{
 
 Model、Tool、Memory、Failure Policy 和 Event Sink 的 panic 都在 Runtime 边界转换为结构化失败。注入 Port 是调用方管理的长生命周期依赖，Runtime 不负责关闭它们；Adapter 必须在每次调用返回前释放自己创建的响应体、Stream 和临时资源，并响应 Context 取消。
 
+## Durable Transition Hook
+
+可选 `Config.TransitionHook` 在 Model、Tool effect、State commit 和审批 Resume 的关键边界同步提交检查点。Hook 成功前 Runtime 不进入下一外部效果，也不替换候选 State；Hook error 或 panic 产生 `transition/*` RunError 并失败关闭。
+
+Transition JSON 元数据只有 ID、Run-local Sequence、State/Tool/Arguments Digest、Effect Class、Outcome 和幂等键。完整 State、Model Request/Response 与 Tool Arguments/Result 通过 `json:"-"` 私有字段交给平台加密保存。未声明 Tool effect class 时默认 `non_reconcilable_write`。稳定 Tool 幂等键还会注入 Execute Context，可由 Adapter 通过 `ToolTransitionFromContext` 传给外部 API。
+
+详细顺序、恢复矩阵和安全规则见 [Durable Transition Hook](./transition.zh-CN.md)。
+
 Context Planning 使用同一取消边界。Counter/Planner 失败会终止 Run，因为继续执行会破坏已配置的 Context 保证。`context.prepare.started/prepared` 在 Ready、Overflow、Error 和 Cancellation 路径均保持配对。
 
 发生 Overflow 后，已配置 Compressor 只有一次机会，随后必须重新规划。普通同 Target Retry 复用压缩视图；Fallback Target 从完整 State 重新开始，并使用自己的 Planner 和可选 Compressor。显式开启后，未被预检发现的 Provider Context Length 拒绝可对失败 Request View 压缩一次、重新规划，并占用一次 `MaxModelCalls`；第二次拒绝不再压缩。Compression Error、非法 Decision、取消、压缩不足和 Event Sink 失败全部 Fail-closed，并在终止前产生配对的 `context.compression.started/completed|failed` Operation。
@@ -92,4 +100,4 @@ Sink 失败语义：
 
 ## 当前非目标
 
-State 和 Event 只提供进程内正确性与诊断。审批 State 可以由应用持久化，但 Core 不承诺进程崩溃恢复、单恢复者协调、跨进程重放、外部副作用 Exactly-once 或数据库 Durable State Machine。企业级落库和 Worker 状态机可参考 [Enterprise Runtime 持久化参考设计](./enterprise-runtime.zh-CN.md)。
+State 和 Event 只提供进程内正确性与诊断。可选 Transition Hook 允许平台同步保存恢复检查点，但 Core 仍不提供数据库、单恢复者协调、跨进程自动重放、外部副作用 Exactly-once 或 Durable Worker State Machine。企业级落库和 Worker 状态机可参考 [Enterprise Runtime 持久化参考设计](./enterprise-runtime.zh-CN.md)。

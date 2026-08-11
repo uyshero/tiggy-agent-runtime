@@ -137,6 +137,11 @@ type Config struct {
 	// Skills 已显式激活的不可变 Skill 快照；提供额外指令与 ToolGroups。
 	Skills *skill.Activation
 
+	// TransitionHook 可选地同步持久化关键执行边界；错误或 panic 会失败关闭并停止推进。
+	TransitionHook TransitionHook
+	// ToolEffectClasses 按模型可见 Tool 名声明外部效果语义。未声明项按不可对账写处理。
+	ToolEffectClasses map[string]ToolEffectClass
+
 	// Limits 单次 Run 边界；零值用 DefaultLimits。
 	Limits Limits
 	// IDs / Now 可注入，便于确定性测试；nil 时用 randomID / time.Now。
@@ -216,6 +221,11 @@ func New(config Config) (*Agent, error) {
 
 	// ---- 工具投影：配置分组与 Skill 分组取并集，并提前校验 Toolkit 能快照 ----
 	config.ToolGroups = canonicalToolGroups(config.ToolGroups)
+	var effectClassErr error
+	config.ToolEffectClasses, effectClassErr = normalizeToolEffectClasses(config.ToolEffectClasses)
+	if effectClassErr != nil {
+		return nil, effectClassErr
+	}
 	config.Skills = config.Skills.Clone() // 避免调用方之后改动激活快照
 	effectiveGroups := effectiveToolGroups(config.ToolGroups, config.Skills)
 	if len(effectiveGroups) > 0 {
@@ -241,6 +251,34 @@ func New(config Config) (*Agent, error) {
 	}
 
 	return &Agent{config: config}, nil
+}
+
+func normalizeToolEffectClasses(values map[string]ToolEffectClass) (map[string]ToolEffectClass, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	cloned := make(map[string]ToolEffectClass, len(values))
+	for original, class := range values {
+		name := strings.TrimSpace(original)
+		if name == "" {
+			return nil, fmt.Errorf("Tool effect class name is required")
+		}
+		if _, exists := cloned[name]; exists {
+			return nil, fmt.Errorf("duplicate Tool effect class for %q", name)
+		}
+		if err := class.validate(); err != nil {
+			return nil, fmt.Errorf("Tool %q: %w", name, err)
+		}
+		cloned[name] = class
+	}
+	return cloned, nil
+}
+
+func (a *Agent) toolEffectClass(name string) ToolEffectClass {
+	if class, exists := a.config.ToolEffectClasses[name]; exists {
+		return class
+	}
+	return ToolEffectNonReconcilableWrite
 }
 
 // effectiveToolGroups 合并 Agent 配置的 ToolGroups 与已激活 Skill 声明的分组（排序去重）。

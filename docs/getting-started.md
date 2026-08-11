@@ -10,7 +10,7 @@ The minimum configuration is:
 one model.Model + one agent.Config + one User Message
 ```
 
-Toolkit, Memory, Context Planner, MCP, Skills, Observers, and Recorder are optional capabilities. Go 1.25.12 or later is currently required. The project is Apache-2.0 licensed, has a local `v0.1.1` release baseline, and remains pre-v1; neither the tag nor these docs claim production readiness.
+Toolkit, Memory, Context Planner, MCP, Skills, Observers, and Recorder are optional capabilities. Go 1.25.12 or later is currently required. The project is Apache-2.0 licensed, has a published `v0.1.2` release baseline, and remains pre-v1; neither the tag nor these docs claim production readiness.
 
 ## 1. Run the Offline Example
 

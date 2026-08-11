@@ -76,7 +76,7 @@ Run / Continue
 Resume
   -> validate suspended State
   -> validate exact approval resolutions
-  -> validate current Toolkit definition digests
+  -> validate current Toolkit definition and Tool effect bindings
      -> mismatch or bad resolution: keep same Suspension and return suspended
      -> valid: clear Suspension, emit approval.resolved, execute original batch
 ```
@@ -96,9 +96,10 @@ Suspension 为每个调用绑定：
 - Call ID 和 Tool Name；
 - Tool Name 与精确参数 JSON 的 SHA-256；
 - 冻结的模型可见 Tool Definition SHA-256；
+- Tool effect class 与 Resume-stable 幂等键（新版 Suspension）；
 - 原始当前 Turn 的起点。
 
-修改 State 中的参数，或使用不同 Tool 契约恢复，都会在执行 Tool 前失败。Core 无法证明 Tool 实现背后的可变内部依赖没有变化，Adapter 必须维持自身执行契约稳定。
+修改 State 中的参数，或使用不同 Tool 契约/效果类别恢复，都会在执行 Tool 前失败。`v0.1.2` 产生且不含新增效果字段的 Suspension 仍可兼容恢复。Core 无法证明 Tool 实现背后的可变内部依赖没有变化，Adapter 必须维持自身执行契约稳定。
 
 Toolkit 契约不匹配时返回 `approval_toolkit_mismatch`，并保留 Suspended State；此时不会标记审批已解决，也不会启动 Memory 或 Tool 操作，应用可以换用兼容 Runtime 后重试。直接篡改 Suspended State 则作为非法输入拒绝。
 
@@ -108,4 +109,4 @@ Memory Recall 在 Resume 时重新执行，因为 Recall Evidence 只属于 Requ
 
 ## 持久化边界
 
-`State` 和 `Suspension` 是可以 JSON 序列化的 Continuation Value，不是持久化调度器。需要落库的应用必须自己实现原子存储、授权、加密、保留与过期、单恢复者协调和 Worker 唤醒。Core 仍不承诺进程崩溃恢复或外部 Tool 副作用 Exactly-once。
+`State` 和 `Suspension` 是可以 JSON 序列化的 Continuation Value，不是持久化调度器。可选 `TransitionHook` 会在 continuation consumed 成功后才清除 Suspension；需要落库的应用仍必须自己实现原子存储、授权、加密、保留与过期、单恢复者协调和 Worker 唤醒。详见 [Durable Transition Hook](./transition.zh-CN.md)。Core 不承诺外部 Tool 副作用 Exactly-once。

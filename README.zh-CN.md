@@ -14,7 +14,7 @@ Go 应用 -> import 本模块 -> 在当前进程直接运行 Agent
 
 ## 当前状态
 
-P3 已完成。仓库当前提供与 Provider 无关的协议、可选 OpenAI-compatible Adapter、有边界的顺序 ReAct Loop、Digest 绑定的 Tool 人工审批暂停与恢复、Toolkit 和内置执行边界、带外部兼容套件的 MCP Transport、显式 Skill 激活、Token Budget Planning、结构安全 Context Compression、有界大型 Tool Result Offload、Scoped Memory 质量契约、只读 Logging/Metrics/OpenTelemetry Observer、版本化且有完整性链接的 Run Recorder，以及确定性故障评测。当前版本仍未达到生产可用状态。
+P3 已完成。仓库当前提供与 Provider 无关的协议、可选 OpenAI-compatible Adapter、有边界的顺序 ReAct Loop、Digest 绑定的 Tool 人工审批暂停与恢复、可选且失败关闭的 Durable Transition Hook、Toolkit 和内置执行边界、带外部兼容套件的 MCP Transport、显式 Skill 激活、Token Budget Planning、结构安全 Context Compression、有界大型 Tool Result Offload、Scoped Memory 质量契约、只读 Logging/Metrics/OpenTelemetry Observer、版本化且有完整性链接的 Run Recorder，以及确定性故障评测。当前版本仍未达到生产可用状态。
 
 ## Go Module
 
@@ -73,7 +73,7 @@ make verify
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.1.1
+make release-verify RELEASE_VERSION=v0.2.0
 ```
 
 当前技术门禁、阻塞项和 Owner 决策见[发布就绪清单](./docs/release-readiness.zh-CN.md)。审计通过是必要条件，但不代表已获得发布授权。
@@ -90,6 +90,7 @@ make release-verify RELEASE_VERSION=v0.1.1
 - [SafeSpace 语义](./docs/safespace.zh-CN.md)
 - [Permission Policy 语义](./docs/permission.zh-CN.md)
 - [Tool 人工审批与恢复语义](./docs/approval.zh-CN.md)
+- [Durable Transition Hook](./docs/transition.zh-CN.md)
 - [Enterprise Runtime 持久化参考设计](./docs/enterprise-runtime.zh-CN.md)
 - [Command Runner 语义](./docs/command.zh-CN.md)
 - [MCP Client 语义](./docs/mcp.zh-CN.md)
@@ -132,6 +133,7 @@ make release-verify RELEASE_VERSION=v0.1.1
 - [ADR 0017：无正文 Model Context 诊断 Manifest](./docs/adr/0017-model-context-diagnostic-manifest.md)
 - [ADR 0018：渐进式能力暴露](./docs/adr/0018-progressive-capability-disclosure.md)
 - [ADR 0019：动态能力激活](./docs/adr/0019-dynamic-capability-activation.md)
+- [ADR 0020：Durable Transition Hook](./docs/adr/0020-durable-transition-hook.md)
 - [兼容性变更记录](./CHANGELOG.md)
 
 ## 与 Tiggy Manage Agent 的关系

@@ -4,6 +4,27 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+## [0.2.0] - 2026-08-11
+
+### Added
+
+- Optional synchronous, fail-closed `agent.TransitionHook` checkpoints `model_call.prepared/completed`, frozen Tool batches, Tool effect prepared/started/completed/indeterminate boundaries, validated State commits, and approval continuation consumption without importing Enterprise storage or scheduling types.
+- `agent.State.Digest` binds each owned checkpoint to a stable SHA-256 value; Transition JSON remains content-free while `json:"-"` private fields carry owned Model/Tool requests and results for platform encryption.
+- Tool effect classes default conservatively to `non_reconcilable_write`; deterministic effect idempotency keys survive approval Resume and are available to Tool adapters through `agent.ToolTransitionFromContext`.
+
+### Compatibility
+
+- `Config.TransitionHook` and `Config.ToolEffectClasses` are additive and optional. Omitting them preserves v0.1.2 execution behavior.
+- `approval.PendingCall` gains additive optional `effect_class` and `idempotency_key` fields. New Suspensions freeze them; v0.1.2 Suspensions with both fields absent remain resumable.
+- Transition failures add the stable `transition` RunError class and stop execution before the next Model or Tool effect.
+
+### Release Notes
+
+- This remains a pre-v1 module. v0.2.0 is source-compatible for callers that omit the new options, while future minor versions may still change public contracts before v1.0.0.
+- Go 1.25.12 or later is required.
+- Core does not provide durable storage, Worker leasing, encryption, or exactly-once external effects. Embedding applications own Transition persistence and reconciliation; interrupted non-reconcilable writes remain indeterminate and require operator handling.
+- Application owners can roll back by pinning v0.1.2 and reverting their Transition adapter. Repository maintainers own tag revocation and any security replacement release.
+
 ## [0.1.2] - 2026-08-11
 
 ### Added

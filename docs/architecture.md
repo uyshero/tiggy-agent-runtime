@@ -116,6 +116,7 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - memory recall, observe and quality policies;
 - structured errors, retries and fallback decisions;
 - process-local Tool approval suspension and exact-call resume;
+- optional synchronous fail-closed external Transition Hook and stable Tool idempotency keys;
 - logging, metrics, traces and run recording;
 - deterministic testing and fault injection.
 
@@ -125,7 +126,7 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - users, tenants, workspaces and RBAC records;
 - PostgreSQL schemas and migrations;
 - Worker queues, leases and distributed scheduling;
-- database-level durable Agent execution;
+- database-level durable Agent execution, lease/fencing, and recovery scheduling;
 - enterprise approval identity, persistence, coordination and audit exports;
 - billing, pricing catalogs and settlement;
 - generated OpenAPI client SDKs.
@@ -145,7 +146,7 @@ The runtime will be designed around these invariants:
 9. Every goroutine and owned resource has an explicit shutdown path.
 10. Event sequence and parent correlation are stable and testable.
 
-These are in-process guarantees. The first release does not guarantee recovery after process termination or exactly-once external side effects.
+These are in-process guarantees. The optional Transition Hook exposes database-neutral persistence boundaries, but Core still does not guarantee automatic recovery after process termination or exactly-once external side effects.
 
 P1 currently uses sequential tool execution and a synchronous Event Sink. `Result.Events` is the complete internal diagnostic trace. Sink failure before a terminal event aborts the run; failure to deliver the terminal event preserves the actual execution status and returns a separate delivery error. See [Agent Runtime semantics](./runtime.md).
 

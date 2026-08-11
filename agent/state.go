@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -17,6 +20,20 @@ type State struct {
 	Messages   []message.Message    `json:"messages"`             // 完整对话（含 System/User/Assistant/Tool）
 	Usage      model.Usage          `json:"usage"`                // 累计 Token/费用
 	Suspension *approval.Suspension `json:"suspension,omitempty"` // 非 nil 表示等待人工审批
+}
+
+// Digest returns a stable SHA-256 digest of the validated serialized State.
+// It covers message content, Usage, and an optional approval Suspension.
+func (s State) Digest() (string, error) {
+	if err := s.Validate(); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(s)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
 // Clone 深拷贝 Messages 与 Suspension，Usage 为值类型直接拷贝。

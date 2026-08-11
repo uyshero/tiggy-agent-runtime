@@ -17,14 +17,15 @@ import (
 // modelGeneration 是一次（可能含重试/降级）模型生成的编排结果。
 // 成功时填 response/callID/startedID；失败时填 err/reason（canceled 表示取消）。
 type modelGeneration struct {
-	response  model.Response
-	callID    string // 本轮模型调用 ID
-	startedID string // ModelCallStarted 事件 ID，供 Completed 挂父
-	target    model.Identity
-	attempt   int // 当前目标上的尝试序号（降级后会重置）
-	err       *RunError
-	reason    string
-	canceled  bool
+	response     model.Response
+	callID       string // 本轮模型调用 ID
+	startedID    string // ModelCallStarted 事件 ID，供 Completed 挂父
+	target       model.Identity
+	attempt      int    // 当前目标上的尝试序号（降级后会重置）
+	transitionID string // model_call.completed Transition ID，供 State commit 关联
+	err          *RunError
+	reason       string
+	canceled     bool
 }
 
 // modelDeltaBudget 限制单次 Generate 可进入事件轨迹的流式数据。
@@ -119,8 +120,10 @@ func (b *modelDeltaBudget) closeAndFailure() *RunError {
 func (a *Agent) generateModel(
 	ctx context.Context,
 	runID string,
+	state State,
 	messages []message.Message,
 	tools []model.ToolDefinition,
+	transitions *transitionEmitter,
 	emit *emitter,
 	modelCalls *int,
 ) modelGeneration {
@@ -161,25 +164,39 @@ func (a *Agent) generateModel(
 			plannedTargetIndex = targetIndex
 		}
 		attempt++
-		*modelCalls++
 		callID := a.config.IDs("model")
+		idempotencyKey := stableTransitionKey("model-call", runID, callID)
+		request := model.Request{
+			RunID: runID, CallID: callID, Purpose: model.PurposeAgent, Model: target.Identity,
+			Messages: message.CloneAll(preparedMessages), Tools: cloneToolDefinitions(tools),
+			MaxOutputTokens: a.config.Limits.MaxOutputTokensPerCall,
+		}
+		preparedTransition, transitionErr := transitions.commit(ctx, TransitionModelCallPrepared, state, transitionFields{
+			callID: callID, idempotencyKey: idempotencyKey,
+			private: TransitionPrivateData{ModelRequest: &request},
+		})
+		if transitionErr != nil {
+			return modelGeneration{err: transitionRunError("model_call_prepare_failed", transitionErr), reason: "transition_failed"}
+		}
 		started, err := emit.emit(event.ModelCallStarted, "", event.ModelCallPayload{
 			CallID: callID, Model: target.Identity, Attempt: attempt,
 			Context: modelContextSnapshot(len(messages), preparedMessages, tools),
 		})
 		if err != nil {
+			_, _ = transitions.commit(context.WithoutCancel(ctx), TransitionModelCallCompleted, state, transitionFields{
+				parentTransitionID: preparedTransition.ID,
+				callID:             callID,
+				idempotencyKey:     idempotencyKey,
+				outcome:            "not_started",
+			})
 			_, _ = emit.emit(event.ModelCallCompleted, started.ID, event.ModelCallPayload{
 				CallID: callID, Model: target.Identity, Attempt: attempt, Status: "failed",
 				Error: &event.ErrorPayload{Class: string(ErrorEventSink), Code: "event_sink_failed", Message: "The event consumer failed."},
 			})
 			return eventSinkGeneration(err)
 		}
+		*modelCalls++
 
-		request := model.Request{
-			RunID: runID, CallID: callID, Purpose: model.PurposeAgent, Model: target.Identity,
-			Messages: message.CloneAll(preparedMessages), Tools: cloneToolDefinitions(tools),
-			MaxOutputTokens: a.config.Limits.MaxOutputTokensPerCall,
-		}
 		// Delta 回调先应用本次调用预算，再同步发 ModelCallDelta。
 		deltaBudget := newModelDeltaBudget(a.config.Limits)
 		var deltaSinkMu sync.Mutex
@@ -196,6 +213,32 @@ func (a *Agent) generateModel(
 		deltaSinkMu.Lock()
 		streamErr := deltaBudget.closeAndFailure()
 		deltaSinkMu.Unlock()
+		transitionOutcome := "completed"
+		if ctx.Err() != nil {
+			transitionOutcome = "canceled"
+		} else if modelErr != nil {
+			transitionOutcome = "failed"
+		} else if streamErr != nil {
+			transitionOutcome = "stream_failed"
+		}
+		privateData := TransitionPrivateData{}
+		if modelErr == nil {
+			privateData.ModelResponse = &response
+		}
+		completedTransition, transitionErr := transitions.commit(context.WithoutCancel(ctx), TransitionModelCallCompleted, state, transitionFields{
+			parentTransitionID: preparedTransition.ID,
+			callID:             callID,
+			idempotencyKey:     idempotencyKey,
+			outcome:            transitionOutcome,
+			private:            privateData,
+		})
+		if transitionErr != nil {
+			runtimeError := transitionRunError("model_call_complete_failed", transitionErr)
+			_, _ = emit.emit(event.ModelCallCompleted, started.ID, event.ModelCallPayload{
+				CallID: callID, Model: target.Identity, Attempt: attempt, Status: "failed", Error: eventError(runtimeError),
+			})
+			return modelGeneration{err: runtimeError, reason: "transition_failed"}
+		}
 		if emit.sinkErr != nil {
 			_, _ = emit.emit(event.ModelCallCompleted, started.ID, event.ModelCallPayload{
 				CallID: callID, Model: target.Identity, Attempt: attempt, Status: "failed",
@@ -216,7 +259,7 @@ func (a *Agent) generateModel(
 			// 成功：不在这里发 Completed，由 runtime 在校验/记账后再发。
 			return modelGeneration{
 				response: response, callID: callID, startedID: started.ID,
-				target: target.Identity, attempt: attempt,
+				target: target.Identity, attempt: attempt, transitionID: completedTransition.ID,
 			}
 		}
 
