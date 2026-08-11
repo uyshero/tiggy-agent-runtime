@@ -4,6 +4,8 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+## [0.1.2] - 2026-08-11
+
 ### Added
 
 - `observe.AsyncSink` provides an official bounded asynchronous Sink wrapper for operational telemetry, with configurable queue size, drop-newest/drop-oldest/block overflow policies, optional immediate-availability `BatchSink` coalescing, error diagnostics, graceful `Flush`/`Shutdown`, non-waiting queue-discarding `Abort`, a content-free runtime statistics snapshot, and application-scheduled `AsyncMetrics` Gauge/Counter-delta export through the existing Recorder and OTel contracts while preserving direct synchronous Sinks for strict audit and recording.
