@@ -42,6 +42,9 @@ prevents a platform from building conservative crash recovery around Core.
 - `tool_effect.started` without a terminal effect transition remains ambiguous.
   Effect class guides platform reconciliation but does not prove exactly-once.
 - Omitting the Hook retains v0.1.2 behavior.
+- This ADR defines observation and persistence boundaries only. ADR 0021 adds
+  the separate, validated API for applying an exact saved completed result; it
+  does not weaken this ADR's rejection of replay or fabricated success.
 
 ## Rejected Alternatives
 

@@ -146,7 +146,7 @@ The runtime will be designed around these invariants:
 9. Every goroutine and owned resource has an explicit shutdown path.
 10. Event sequence and parent correlation are stable and testable.
 
-These are in-process guarantees. The optional Transition Hook exposes database-neutral persistence boundaries, but Core still does not guarantee automatic recovery after process termination or exactly-once external side effects.
+These are primarily in-process guarantees. The optional Transition Hook plus `Agent.Recover` can validate and apply a durably saved completed result across a process boundary. Core still does not select the latest boundary, coordinate recovery Workers, replay indeterminate effects, or guarantee exactly-once external side effects.
 
 P1 currently uses sequential tool execution and a synchronous Event Sink. `Result.Events` is the complete internal diagnostic trace. Sink failure before a terminal event aborts the run; failure to deliver the terminal event preserves the actual execution status and returns a separate delivery error. See [Agent Runtime semantics](./runtime.md).
 

@@ -4,6 +4,31 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+## [0.2.1] - 2026-08-12
+
+### Added
+
+- `Agent.Recover` validates a durably saved `model_call.completed` or `tool_effect.completed` Transition, applies its exact private Model/Tool result through Core-owned State construction, persists `recovery_continuation.applied`, and continues without caller mutation of `agent.State`.
+- Recovery rejects changed State digests, Tool definitions, arguments, effect classes, idempotency keys, invalid results, indeterminate effects, and missing Hooks before another Model or Tool effect can start.
+- Recovered multi-Tool batches place all remaining unstarted calls behind a new approval Suspension instead of re-evaluating them into automatic execution.
+
+### Changed
+
+- Successful `tool_effect.completed` checkpoints now contain the final State-ready inline or Artifact-projected Tool Result. Model responses are normalized before their completed checkpoint is persisted, making repeated recovery deterministic.
+- Model-visible Tool errors persist their exact safe Result and error/retry flags for recovery. Artifact projection failures remain indeterminate and are not eligible for automatic result application.
+
+### Compatibility
+
+- `Agent.Recover`, `TransitionRecoveryContinuationApplied`, and private recovery flags are additive. Existing callers that do not invoke recovery keep v0.2.0 behavior.
+- Successful v0.2.0 Tool completions remain recoverable when no Artifact Offloader is configured. A legacy completion from an Agent with Artifact Offload is rejected because its private value predates the State-ready projection boundary.
+- Core still does not replay indeterminate Tools, accept operator assertions as results, select the latest durable boundary, provide Worker leases/fencing, or promise exactly-once external effects.
+
+### Release Notes
+
+- This pre-v1 patch completes the recovery surface introduced by v0.2.0 without changing existing `Run`, `Continue`, or `Resume` callers. Go 1.25.12 or later remains required.
+- Applications must persist the complete private recovery fields, enforce recovery idempotency keys, and route only the latest completed boundary to `Recover`.
+- Rollback to v0.2.0 disables `Agent.Recover`; Runs that have emitted `recovery_continuation.applied` must remain on a v0.2.1-compatible Executor. Repository maintainers own tag revocation and security replacement releases.
+
 ## [0.2.0] - 2026-08-11
 
 ### Added

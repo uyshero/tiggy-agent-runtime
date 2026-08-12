@@ -110,10 +110,11 @@ Enterprise 不能只靠 `Result.State` 宣称 durable execution。启用 `Transi
 | 一次调用的状态校验 | 是 | 调用并处理结果 |
 | 可序列化 `State` / `Suspension` | 是 | 加密、落库、版本管理 |
 | 同步 Transition 检查点 | 可选 Hook | 事务、加密、唯一约束、恢复决策 |
+| 已完成结果推进 State | 校验后的 `Agent.Recover` | 选择最新边界、解密结果、调用并持久化结果 |
 | 审批前零副作用挂起 | 是 | 审批人、通知、过期、审计 |
 | 单恢复者协调 | 否 | DB version、lease、queue |
-| 崩溃恢复 | 否 | Worker recovery、effect reconciliation |
+| 崩溃恢复编排 | 否 | Worker recovery、effect reconciliation |
 | 外部副作用 Exactly-once | 否 | 幂等键、外部查询、补偿或人工介入 |
 | 时间线查询 | 提供 Event | 持久化、索引、权限、UI |
 
-Hook 事件顺序、私有载荷和效果分类见 [Durable Transition Hook](./transition.zh-CN.md)。一句话：Core 负责提供可验证的执行边界；Enterprise 负责让任务跨进程、跨人、跨时间可靠地活下去。
+Hook 事件顺序、私有载荷、效果分类和已完成结果恢复见 [Durable Transition Hook](./transition.zh-CN.md)。一句话：Core 负责提供可验证的执行边界和合法 State 推进；Enterprise 负责让任务跨进程、跨人、跨时间可靠地活下去。

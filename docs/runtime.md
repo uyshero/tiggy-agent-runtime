@@ -3,7 +3,7 @@
 ## API and Ownership
 
 - `agent.New` validates an immutable Agent configuration. One Agent may be reused concurrently when its injected Model and Tools support concurrent calls.
-- `Run` starts with empty state. `Continue` accepts only complete state with no pending tool calls. `Resume` accepts only a validated approval Suspension and an exact set of decisions.
+- `Run` starts with empty state. `Continue` accepts only complete state with no pending tool calls. `Resume` accepts only a validated approval Suspension and an exact set of decisions. `Recover` accepts only a durable completed Model/Tool Transition and requires a Transition Hook.
 - Each run copies input state, model requests, Toolkit definitions, and returned values so retained slices cannot mutate an active run.
 - The Toolkit is snapshotted at run start. Registrations made during a run affect later runs only.
 - Activated Skills are immutable Agent configuration. Their instructions enter only the initial Instruction Stack System Message with `metadata.kind=instruction_stack`; `run.started` records name/version/digest provenance without content bodies.
@@ -93,7 +93,12 @@ Model request/response, and Tool arguments/results are delivered through
 `non_reconcilable_write`. The stable effect key is also available to Tool
 adapters through `ToolTransitionFromContext`.
 
-See [Durable Transition Hook](./transition.md) for ordering, recovery, and
+`Recover` lets Core validate and apply the exact private result from a completed
+Transition before continuing. It does not accept caller-built State or an
+operator assertion. Remaining calls after a recovered Tool result are placed
+behind a fresh approval Suspension.
+
+See [Durable Transition Hook](./transition.md) for ordering, Recovery API, and
 security rules.
 
 Context planning uses the same cancellation boundary. Counter/Planner failures are run-fatal because proceeding would invalidate the configured context guarantee. `context.prepare.started/prepared` are balanced on ready, overflow, error, and cancellation paths.

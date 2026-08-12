@@ -59,7 +59,7 @@
 
 ## Deferred Until Required
 
-- durable cross-process Agent execution;
+- full durable cross-process Agent execution orchestration;
 - PostgreSQL state machine;
 - Worker lease and distributed scheduling;
 - exactly-once external tool effects;
@@ -95,10 +95,12 @@ Dynamic activation during a running Task is intentionally deferred until a separ
 - [x] Stable Tool effect classes and Resume-stable idempotency keys
 - [x] Encrypted-storage private payload boundary outside JSON metadata
 - [x] Exact approval continuation-consumption checkpoint
+- [x] Validated completed Model/Tool result Recovery Continuation API
+- [x] Stable recovery idempotency key and remaining-batch approval barrier
 - [x] Deterministic pre-effect, post-effect, panic, and Resume failure tests
 - [ ] Managed platform PostgreSQL adapter, lease/fencing integration, and operator reconciliation workflow
 
-The unchecked item remains an Enterprise responsibility and must enter through a released SemVer dependency; Core does not import the platform implementation. See [Durable Transition Hook](./transition.md) and [ADR 0020](./adr/0020-durable-transition-hook.md).
+The unchecked item remains an Enterprise responsibility and must enter through a released SemVer dependency; Core does not import the platform implementation. See [Durable Transition Hook](./transition.md), [ADR 0020](./adr/0020-durable-transition-hook.md), and [ADR 0021](./adr/0021-recovery-continuation-api.md).
 
 ## Draft: v0.2.0 Dynamic Capability Activation
 

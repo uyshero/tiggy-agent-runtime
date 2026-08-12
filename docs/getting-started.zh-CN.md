@@ -12,7 +12,7 @@
 
 Toolkit、Memory、Context Planner、MCP、Skills、Observer 和 Recorder 都是按需增加的能力。
 
-当前要求 Go 1.25.12 或更高版本。项目采用 Apache-2.0 许可证，仓库已有公开可获取的 `v0.1.2` 发布基线，但仍处于 pre-v1 阶段；该 Tag 和本文档都不代表生产就绪承诺。
+当前要求 Go 1.25.12 或更高版本。项目采用 Apache-2.0 许可证，仓库已有公开可获取的 `v0.2.0` 发布基线，但仍处于 pre-v1 阶段；该 Tag 和本文档都不代表生产就绪承诺。
 
 ## 1. 先运行离线示例
 
@@ -245,7 +245,7 @@ result, err := runtime.RunStream(ctx, input, sink)
 next, err := runtime.Continue(ctx, result.State, nextInput, sink)
 ```
 
-`Continue` 会复制传入 State，并拒绝带未完成 Tool Call 的非法状态。`Result.State` 是进程内值，不是数据库 Snapshot、跨进程 Checkpoint 或崩溃恢复协议。需要保存会话时，由应用定义存储、版本、授权和迁移策略。
+`Continue` 会复制传入 State，并拒绝带未完成 Tool Call 的非法状态。单独的 `Result.State` 是进程内值，不是数据库 Snapshot、跨进程 Checkpoint 或崩溃恢复协议。托管恢复必须组合失败关闭的 `TransitionHook`、`Agent.Recover`、应用自有存储和 Worker 协调。
 
 ## 8. 增加 Memory
 

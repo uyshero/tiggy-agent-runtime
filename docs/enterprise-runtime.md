@@ -135,12 +135,13 @@ Tool replay.
 | Single-invocation state validation | Yes | Calls it and handles results |
 | Serializable `State` / `Suspension` | Yes | Encrypts, persists, versions |
 | Synchronous Transition checkpoint | Optional Hook | Transaction, encryption, uniqueness, recovery decision |
+| Completed-result State recovery | Validated `Agent.Recover` | Selects latest boundary, decrypts result, invokes and persists outcome |
 | Zero-side-effect approval suspension | Yes | Approver, notification, expiry, audit |
 | Single-resumer coordination | No | DB version, lease, queue |
-| Crash recovery | No | Worker recovery and effect reconciliation |
+| Crash recovery orchestration | No | Worker recovery and effect reconciliation |
 | Exactly-once external side effects | No | Idempotency keys, lookup, compensation, or human intervention |
 | Timeline query | Emits Events | Persistence, indexes, permissions, UI |
 
 See [Durable Transition Hook](./transition.md) for ordering, private payloads,
-and effect classes. In short: Core exposes verifiable execution boundaries;
+effect classes, and completed-result recovery. In short: Core exposes verifiable execution boundaries;
 Enterprise ensures the task survives across processes, people, and time.

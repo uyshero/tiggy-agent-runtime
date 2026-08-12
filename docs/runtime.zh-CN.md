@@ -3,7 +3,7 @@
 ## API 与所有权
 
 - `agent.New` 校验配置并生成不可变 Agent；当注入的 Model 和 Tool 支持并发时，同一个 Agent 可被多个调用方并发复用。
-- `Run` 从空 State 开始，`Continue` 只接受没有未完成 Tool Call 的完整 State；`Resume` 只接受通过校验的审批 Suspension 和精确完整的决定集合。
+- `Run` 从空 State 开始，`Continue` 只接受没有未完成 Tool Call 的完整 State；`Resume` 只接受通过校验的审批 Suspension 和精确完整的决定集合；`Recover` 只接受持久化的 Model/Tool completed Transition，并要求配置 Transition Hook。
 - 每次 Run 复制输入 State、Model Request、Toolkit 定义和返回结果；调用方不能通过保留 Slice 修改运行中状态。
 - Toolkit 在 Run 开始时创建快照。Run 期间注册的新工具只对后续 Run 可见。
 - 激活 Skill 是不可变 Agent 配置，其指令只进入初始 Instruction Stack System Message，并带有 `metadata.kind=instruction_stack`；`run.started` 只记录 Name/Version/Digest 来源，不记录内容正文。
@@ -77,6 +77,8 @@ Model、Tool、Memory、Failure Policy 和 Event Sink 的 panic 都在 Runtime �
 
 Transition JSON 元数据只有 ID、Run-local Sequence、State/Tool/Arguments Digest、Effect Class、Outcome 和幂等键。完整 State、Model Request/Response 与 Tool Arguments/Result 通过 `json:"-"` 私有字段交给平台加密保存。未声明 Tool effect class 时默认 `non_reconcilable_write`。稳定 Tool 幂等键还会注入 Execute Context，可由 Adapter 通过 `ToolTransitionFromContext` 传给外部 API。
 
+`Recover` 允许 Core 校验 completed Transition 中的精确私有结果并推进 State 后继续执行。它不接受调用方拼装的 State 或人工成功断言。恢复 Tool Result 后，同批剩余调用会进入新的审批 Suspension。
+
 详细顺序、恢复矩阵和安全规则见 [Durable Transition Hook](./transition.zh-CN.md)。
 
 Context Planning 使用同一取消边界。Counter/Planner 失败会终止 Run，因为继续执行会破坏已配置的 Context 保证。`context.prepare.started/prepared` 在 Ready、Overflow、Error 和 Cancellation 路径均保持配对。
@@ -100,4 +102,4 @@ Sink 失败语义：
 
 ## 当前非目标
 
-State 和 Event 只提供进程内正确性与诊断。可选 Transition Hook 允许平台同步保存恢复检查点，但 Core 仍不提供数据库、单恢复者协调、跨进程自动重放、外部副作用 Exactly-once 或 Durable Worker State Machine。企业级落库和 Worker 状态机可参考 [Enterprise Runtime 持久化参考设计](./enterprise-runtime.zh-CN.md)。
+State 和 Event 只提供进程内正确性与诊断。可选 Transition Hook 与 `Recover` 可应用已确定完成的持久化结果，但 Core 仍不提供数据库、最新边界选择、单恢复者协调、indeterminate Tool 自动重放、外部副作用 Exactly-once 或 Durable Worker State Machine。企业级落库和 Worker 状态机可参考 [Enterprise Runtime 持久化参考设计](./enterprise-runtime.zh-CN.md)。

@@ -213,6 +213,11 @@ func (a *Agent) generateModel(
 		deltaSinkMu.Lock()
 		streamErr := deltaBudget.closeAndFailure()
 		deltaSinkMu.Unlock()
+		if modelErr == nil && streamErr == nil {
+			// Persist the exact normalized value that a recovery will commit. This
+			// also makes repeated recovery attempts derive the same Message ID.
+			response = a.normalizeResponse(response)
+		}
 		transitionOutcome := "completed"
 		if ctx.Err() != nil {
 			transitionOutcome = "canceled"

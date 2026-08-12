@@ -13,6 +13,7 @@ import (
 	"github.com/uyshero/tiggy-agent-runtime/agent"
 	"github.com/uyshero/tiggy-agent-runtime/agenttest"
 	"github.com/uyshero/tiggy-agent-runtime/approval"
+	"github.com/uyshero/tiggy-agent-runtime/artifact"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
 	"github.com/uyshero/tiggy-agent-runtime/tool"
@@ -20,23 +21,36 @@ import (
 )
 
 type recordingTransitionHook struct {
-	mu       sync.Mutex
-	values   []agent.Transition
-	failType agent.TransitionType
-	failOnce bool
-	panicAt  agent.TransitionType
+	mu                      sync.Mutex
+	values                  []agent.Transition
+	failType                agent.TransitionType
+	failCause               string
+	failOnce                bool
+	panicAt                 agent.TransitionType
+	rejectDuplicateRecovery bool
+	recoveryKeys            map[string]struct{}
 }
 
 func (h *recordingTransitionHook) CommitTransition(_ context.Context, value agent.Transition) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.values = append(h.values, value.Clone())
+	if value.Type == agent.TransitionRecoveryContinuationApplied && h.rejectDuplicateRecovery {
+		if h.recoveryKeys == nil {
+			h.recoveryKeys = make(map[string]struct{})
+		}
+		if _, exists := h.recoveryKeys[value.IdempotencyKey]; exists {
+			return errors.New("recovery continuation already applied")
+		}
+		h.recoveryKeys[value.IdempotencyKey] = struct{}{}
+	}
 	if value.Type == h.panicAt {
 		panic("transition hook panic")
 	}
-	if value.Type == h.failType {
+	if value.Type == h.failType || (h.failCause != "" && value.Cause == h.failCause) {
 		if h.failOnce {
 			h.failType = ""
+			h.failCause = ""
 		}
 		return errors.New("checkpoint unavailable")
 	}
@@ -57,6 +71,13 @@ func (h *recordingTransitionHook) failNext(kind agent.TransitionType) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.failType = kind
+	h.failOnce = true
+}
+
+func (h *recordingTransitionHook) failNextCause(cause string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.failCause = cause
 	h.failOnce = true
 }
 
@@ -196,6 +217,323 @@ func TestModelCompletionTransitionFailureDoesNotCommitResponse(t *testing.T) {
 		t.Fatalf("result = %#v, model calls = %d", result, len(script.Calls()))
 	}
 	assertTerminalInvariants(t, result)
+}
+
+func TestRecoverAppliesSavedModelResponseWithoutCallingModelAgain(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("model_response_committed")
+	script := agenttest.NewScriptedModel(agenttest.ModelStep{Response: textResponse("recovered answer")})
+	value := newTransitionAgent(t, script, hook, nil, agent.ToolEffectNonReconcilableWrite, nil)
+
+	first, err := value.Run(context.Background(), userMessage("answer"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	if first.Status != agent.StatusFailed || len(script.Calls()) != 1 {
+		t.Fatalf("first result = %#v, model calls = %d", first, len(script.Calls()))
+	}
+	completed := findTransition(t, hook.transitions(), agent.TransitionModelCallCompleted)
+	if completed.Private.ModelResponse == nil || completed.Private.ModelResponse.Message.ID == "" {
+		t.Fatalf("saved response is not normalized: %#v", completed.Private.ModelResponse)
+	}
+
+	recovered, err := value.Recover(context.Background(), completed, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Status != agent.StatusCompleted || recovered.Final == nil ||
+		recovered.Final.Content[0].Text != "recovered answer" || len(script.Calls()) != 1 {
+		t.Fatalf("recovered result = %#v, model calls = %d", recovered, len(script.Calls()))
+	}
+	applied := findTransition(t, hook.transitions(), agent.TransitionRecoveryContinuationApplied)
+	if applied.ParentTransitionID != completed.ID || applied.ContinuationID != completed.ID || applied.Outcome != "model_response" {
+		t.Fatalf("recovery transition = %#v", applied)
+	}
+	assertTerminalInvariants(t, recovered)
+}
+
+func TestRecoverContinuesSavedModelToolCallsThroughNormalPipeline(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("model_response_committed")
+	executions := 0
+	script := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Response: toolCallResponse("call_1", "effect")},
+		agenttest.ModelStep{Response: textResponse("done")},
+	)
+	value := newTransitionAgent(t, script, hook, nil, agent.ToolEffectIdempotentWrite, &executions)
+	_, err := value.Run(context.Background(), userMessage("run effect"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	if executions != 0 || len(script.Calls()) != 1 {
+		t.Fatalf("failed invocation progressed: executions = %d, model calls = %d", executions, len(script.Calls()))
+	}
+	completed := findTransition(t, hook.transitions(), agent.TransitionModelCallCompleted)
+
+	recovered, err := value.Recover(context.Background(), completed, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Status != agent.StatusCompleted || executions != 1 || len(script.Calls()) != 2 {
+		t.Fatalf("recovered result = %#v, executions = %d, model calls = %d", recovered, executions, len(script.Calls()))
+	}
+	assertTerminalInvariants(t, recovered)
+}
+
+func TestRecoverAppliesSavedToolResultWithoutReplayingTool(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("tool_result_committed")
+	executions := 0
+	script := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Response: toolCallResponse("call_1", "effect")},
+		agenttest.ModelStep{Response: textResponse("done")},
+	)
+	value := newTransitionAgent(t, script, hook, nil, agent.ToolEffectIdempotentWrite, &executions)
+
+	first, err := value.Run(context.Background(), userMessage("run effect"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	if first.Status != agent.StatusFailed || executions != 1 || len(script.Calls()) != 1 {
+		t.Fatalf("first result = %#v, executions = %d, model calls = %d", first, executions, len(script.Calls()))
+	}
+	completed := findTransition(t, hook.transitions(), agent.TransitionToolEffectCompleted)
+	if completed.Private.ToolResult == nil || !completed.Private.ToolResultStateReady {
+		t.Fatalf("saved Tool result is not State-ready: %#v", completed.Private)
+	}
+
+	recovered, err := value.Recover(context.Background(), completed, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Status != agent.StatusCompleted || executions != 1 || len(script.Calls()) != 2 {
+		t.Fatalf("recovered result = %#v, executions = %d, model calls = %d", recovered, executions, len(script.Calls()))
+	}
+	projected := lastToolResult(recovered.State.Messages)
+	if projected == nil || projected.Content[0].Text != "secret-result" {
+		t.Fatalf("recovered Tool result = %#v", projected)
+	}
+	assertTerminalInvariants(t, recovered)
+}
+
+func TestRecoverPreservesSavedModelVisibleToolError(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("tool_result_committed")
+	script := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Response: toolCallResponse("call_1", "effect")},
+		agenttest.ModelStep{
+			Assert: func(request model.Request) error {
+				result := lastToolResult(request.Messages)
+				if result == nil || !result.IsError || !result.Retryable || result.Content[0].Text != "retry safely" {
+					return fmt.Errorf("recovered Tool error = %#v", result)
+				}
+				return nil
+			},
+			Response: textResponse("done"),
+		},
+	)
+	kit, err := toolkit.New(agenttest.FuncTool{
+		DefinitionValue: model.ToolDefinition{Name: "effect", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		ExecuteFunc: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{}, tool.NewError("temporary", "retry safely", true, nil)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := agent.New(agent.Config{
+		Name: "recovery-tool-error", Model: script,
+		ModelIdentity: model.Identity{Provider: "test", Model: "scripted"}, Toolkit: kit,
+		TransitionHook: hook, ToolEffectClasses: map[string]agent.ToolEffectClass{"effect": agent.ToolEffectReadOnly},
+		IDs: agenttest.SequentialIDs(), Now: agenttest.StepClock(time.Unix(1_700_000_000, 0), time.Millisecond),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = value.Run(context.Background(), userMessage("run effect"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	completed := findTransition(t, hook.transitions(), agent.TransitionToolEffectCompleted)
+	if completed.Outcome != "tool_error" || !completed.Private.ToolResultIsError || !completed.Private.ToolResultRetryable {
+		t.Fatalf("saved Tool error = %#v", completed)
+	}
+	recovered, err := value.Recover(context.Background(), completed, nil)
+	if err != nil || recovered.Status != agent.StatusCompleted {
+		t.Fatalf("recovered result = %#v, error = %v", recovered, err)
+	}
+}
+
+func TestRecoverUsesSavedArtifactProjectionWithoutOffloadingAgain(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("tool_result_committed")
+	storeCalls := 0
+	offloader := newAgentOffloader(t, agentStoreFunc(func(_ context.Context, request artifact.PutRequest) (artifact.StoredObject, error) {
+		storeCalls++
+		return artifact.StoredObject{ObjectRefID: "objects/recovered-result"}, nil
+	}), 32, 4096)
+	largeResult := strings.Repeat("recoverable-", 64)
+	script := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Response: toolCallResponse("call_1", "report")},
+		agenttest.ModelStep{
+			Assert: func(request model.Request) error {
+				result := lastToolResult(request.Messages)
+				if result == nil || len(result.Content) != 1 || result.Content[0].Artifact == nil ||
+					result.Content[0].Artifact.ObjectRefID != "objects/recovered-result" {
+					return fmt.Errorf("recovered Artifact result = %#v", result)
+				}
+				return nil
+			},
+			Response: textResponse("done"),
+		},
+	)
+	kit, err := toolkit.New(agenttest.FuncTool{
+		DefinitionValue: model.ToolDefinition{Name: "report", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		ExecuteFunc: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.TextResult(largeResult), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := agent.New(agent.Config{
+		Name: "recovery-artifact", Model: script,
+		ModelIdentity: model.Identity{Provider: "test", Model: "scripted"}, Toolkit: kit,
+		ArtifactOffloader: offloader, TransitionHook: hook,
+		ToolEffectClasses: map[string]agent.ToolEffectClass{"report": agent.ToolEffectReadOnly},
+		IDs:               agenttest.SequentialIDs(), Now: agenttest.StepClock(time.Unix(1_700_000_000, 0), time.Millisecond),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = value.Run(context.Background(), userMessage("create report"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	completed := findTransition(t, hook.transitions(), agent.TransitionToolEffectCompleted)
+	if completed.Private.ToolResult == nil || !completed.Private.ToolResultStateReady ||
+		completed.Private.ToolResult.Content[0].Artifact == nil {
+		t.Fatalf("saved projected result = %#v", completed.Private)
+	}
+	recovered, err := value.Recover(context.Background(), completed, nil)
+	if err != nil || recovered.Status != agent.StatusCompleted {
+		t.Fatalf("recovered result = %#v, error = %v", recovered, err)
+	}
+	if storeCalls != 1 {
+		t.Fatalf("Artifact store calls = %d, want 1", storeCalls)
+	}
+}
+
+func TestRecoverSuspendsRemainingToolBatchInsteadOfExecutingIt(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("tool_result_committed")
+	executions := 0
+	script := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Response: model.Response{
+			Message: message.Message{Content: []message.Content{
+				{Type: message.ContentToolCall, ToolCall: &message.ToolCall{ID: "call_1", Name: "effect", Arguments: json.RawMessage(`{}`)}},
+				{Type: message.ContentToolCall, ToolCall: &message.ToolCall{ID: "call_2", Name: "effect", Arguments: json.RawMessage(`{}`)}},
+			}},
+			StopReason: model.StopReasonToolCall,
+		}},
+		agenttest.ModelStep{Response: textResponse("done")},
+	)
+	value := newTransitionAgent(t, script, hook, nil, agent.ToolEffectIdempotentWrite, &executions)
+
+	_, err := value.Run(context.Background(), userMessage("run both"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	if executions != 1 {
+		t.Fatalf("executions before recovery = %d", executions)
+	}
+	completed := findTransition(t, hook.transitions(), agent.TransitionToolEffectCompleted)
+
+	recovered, err := value.Recover(context.Background(), completed, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Status != agent.StatusSuspended || recovered.Suspension == nil || executions != 1 {
+		t.Fatalf("recovered result = %#v, executions = %d", recovered, executions)
+	}
+	if len(recovered.Suspension.Calls) != 1 || recovered.Suspension.Calls[0].CallID != "call_2" ||
+		recovered.Suspension.Calls[0].Behavior != approval.BehaviorRequire {
+		t.Fatalf("recovery suspension = %#v", recovered.Suspension)
+	}
+	if err := recovered.State.ValidateSuspended(); err != nil {
+		t.Fatalf("recovery suspension is invalid: %v", err)
+	}
+}
+
+func TestRecoverRejectsTamperedToolArgumentsAndHookFailureIsFailClosed(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{}
+	hook.failNextCause("tool_result_committed")
+	executions := 0
+	script := agenttest.NewScriptedModel(
+		agenttest.ModelStep{Response: toolCallResponse("call_1", "effect")},
+		agenttest.ModelStep{Response: textResponse("must not run")},
+	)
+	value := newTransitionAgent(t, script, hook, nil, agent.ToolEffectReconcilableWrite, &executions)
+	_, err := value.Run(context.Background(), userMessage("run effect"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	completed := findTransition(t, hook.transitions(), agent.TransitionToolEffectCompleted)
+
+	tampered := completed.Clone()
+	tampered.Private.ToolArguments = json.RawMessage(`{"changed":true}`)
+	_, err = value.Recover(context.Background(), tampered, nil)
+	assertRunError(t, err, agent.ErrorInvalidInput, "recovery_arguments_mismatch")
+	if executions != 1 || len(script.Calls()) != 1 {
+		t.Fatalf("tampered recovery progressed: executions = %d, model calls = %d", executions, len(script.Calls()))
+	}
+	indeterminate := completed.Clone()
+	indeterminate.Type = agent.TransitionToolEffectIndeterminate
+	indeterminate.Outcome = "operator_reconciled"
+	_, err = value.Recover(context.Background(), indeterminate, nil)
+	assertRunError(t, err, agent.ErrorInvalidInput, "unsupported_recovery_transition")
+
+	withoutHook := newTransitionAgent(t, agenttest.NewScriptedModel(), nil, nil, agent.ToolEffectReconcilableWrite, new(int))
+	_, err = withoutHook.Recover(context.Background(), completed, nil)
+	assertRunError(t, err, agent.ErrorInvalidInput, "recovery_hook_required")
+
+	hook.failNext(agent.TransitionRecoveryContinuationApplied)
+	failed, err := value.Recover(context.Background(), completed, nil)
+	assertRunError(t, err, agent.ErrorTransition, "recovery_continuation_failed")
+	if failed.Status != agent.StatusFailed || executions != 1 || len(script.Calls()) != 1 {
+		t.Fatalf("failed recovery progressed: %#v, executions = %d, model calls = %d", failed, executions, len(script.Calls()))
+	}
+}
+
+func TestRecoverUsesStableIdempotencyKeyForDuplicateSubmission(t *testing.T) {
+	t.Parallel()
+
+	hook := &recordingTransitionHook{rejectDuplicateRecovery: true}
+	hook.failNextCause("model_response_committed")
+	script := agenttest.NewScriptedModel(agenttest.ModelStep{Response: textResponse("done")})
+	value := newTransitionAgent(t, script, hook, nil, agent.ToolEffectNonReconcilableWrite, nil)
+	_, err := value.Run(context.Background(), userMessage("answer"))
+	assertRunError(t, err, agent.ErrorTransition, "state_transition_failed")
+	completed := findTransition(t, hook.transitions(), agent.TransitionModelCallCompleted)
+
+	first, err := value.Recover(context.Background(), completed, nil)
+	if err != nil || first.Status != agent.StatusCompleted {
+		t.Fatalf("first recovery = %#v, error = %v", first, err)
+	}
+	second, err := value.Recover(context.Background(), completed, nil)
+	assertRunError(t, err, agent.ErrorTransition, "recovery_continuation_failed")
+	if second.Status != agent.StatusFailed || len(script.Calls()) != 1 {
+		t.Fatalf("duplicate recovery = %#v, model calls = %d", second, len(script.Calls()))
+	}
+	var keys []string
+	for _, transition := range hook.transitions() {
+		if transition.Type == agent.TransitionRecoveryContinuationApplied {
+			keys = append(keys, transition.IdempotencyKey)
+		}
+	}
+	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
+		t.Fatalf("recovery idempotency keys = %#v", keys)
+	}
 }
 
 func TestToolBatchFreezeFailurePreventsEffects(t *testing.T) {

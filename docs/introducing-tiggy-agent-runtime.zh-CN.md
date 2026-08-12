@@ -185,7 +185,7 @@ Tiggy Agent Runtime 更适合：
 - 无代码 Agent 搭建；
 - 完整的 SaaS 控制台和审批工作流；
 - 开箱即用的持久化 Worker 集群；
-- 跨进程恢复和 Exactly-once 外部副作用；
+- 完整跨进程恢复编排和 Exactly-once 外部副作用；
 - 内置的 Multi-agent Team、RAG 产品或 Voice Pipeline。
 
 这些能力可以由上层产品实现，但不是 Core 当前承诺的一部分。
@@ -194,7 +194,7 @@ Tiggy Agent Runtime 更适合：
 
 Tiggy Agent Runtime 已完成 P0 到 P3 的工程实现，覆盖协议基础、可靠 Agent Loop、Toolkit 与执行环境、Context、Memory、Observability、Run Recorder 和 Fault Injection。
 
-但项目仍处于 pre-v1 阶段，尚未宣称生产可用。仓库已有公开可获取的 `v0.1.2` 发布基线；真实 Provider Adapter 和企业流程的端到端接入仍需验证，后续公开版本仍必须经过审核并获得 Owner 发布授权。
+但项目仍处于 pre-v1 阶段，尚未宣称生产可用。仓库已有公开可获取的 `v0.2.0` 发布基线；真实 Provider Adapter 和企业流程的端到端接入仍需验证，后续公开版本仍必须经过审核并获得 Owner 发布授权。
 
 因此，当前最合适的定位是：
 

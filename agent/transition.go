@@ -22,15 +22,16 @@ const TransitionProtocolVersion = "1"
 type TransitionType string
 
 const (
-	TransitionModelCallPrepared          TransitionType = "model_call.prepared"
-	TransitionModelCallCompleted         TransitionType = "model_call.completed"
-	TransitionToolBatchFrozen            TransitionType = "tool_batch.frozen"
-	TransitionToolEffectPrepared         TransitionType = "tool_effect.prepared"
-	TransitionToolEffectStarted          TransitionType = "tool_effect.started"
-	TransitionToolEffectCompleted        TransitionType = "tool_effect.completed"
-	TransitionToolEffectIndeterminate    TransitionType = "tool_effect.indeterminate"
-	TransitionStateCommitted             TransitionType = "state_transition.committed"
-	TransitionResumeContinuationConsumed TransitionType = "resume_continuation.consumed"
+	TransitionModelCallPrepared           TransitionType = "model_call.prepared"
+	TransitionModelCallCompleted          TransitionType = "model_call.completed"
+	TransitionToolBatchFrozen             TransitionType = "tool_batch.frozen"
+	TransitionToolEffectPrepared          TransitionType = "tool_effect.prepared"
+	TransitionToolEffectStarted           TransitionType = "tool_effect.started"
+	TransitionToolEffectCompleted         TransitionType = "tool_effect.completed"
+	TransitionToolEffectIndeterminate     TransitionType = "tool_effect.indeterminate"
+	TransitionStateCommitted              TransitionType = "state_transition.committed"
+	TransitionResumeContinuationConsumed  TransitionType = "resume_continuation.consumed"
+	TransitionRecoveryContinuationApplied TransitionType = "recovery_continuation.applied"
 )
 
 // ToolEffectClass describes the strongest recovery guarantee declared by an
@@ -98,10 +99,13 @@ func withToolExecutionTransition(ctx context.Context, runID string, binding Tran
 // without placing it in JSON metadata. A platform is responsible for tenant
 // isolation and encryption before persistence.
 type TransitionPrivateData struct {
-	ModelRequest  *model.Request  `json:"-"`
-	ModelResponse *model.Response `json:"-"`
-	ToolArguments json.RawMessage `json:"-"`
-	ToolResult    *tool.Result    `json:"-"`
+	ModelRequest         *model.Request  `json:"-"`
+	ModelResponse        *model.Response `json:"-"`
+	ToolArguments        json.RawMessage `json:"-"`
+	ToolResult           *tool.Result    `json:"-"`
+	ToolResultStateReady bool            `json:"-"`
+	ToolResultIsError    bool            `json:"-"`
+	ToolResultRetryable  bool            `json:"-"`
 }
 
 func (d TransitionPrivateData) clone() TransitionPrivateData {
@@ -227,6 +231,18 @@ func (t Transition) Validate() error {
 	case TransitionResumeContinuationConsumed:
 		if strings.TrimSpace(t.ContinuationID) == "" || strings.TrimSpace(t.IdempotencyKey) == "" {
 			return fmt.Errorf("Resume transition requires continuation ID and idempotency key")
+		}
+	case TransitionRecoveryContinuationApplied:
+		if strings.TrimSpace(t.ParentTransitionID) == "" || strings.TrimSpace(t.ContinuationID) == "" ||
+			strings.TrimSpace(t.IdempotencyKey) == "" || strings.TrimSpace(t.Outcome) == "" ||
+			t.ParentTransitionID != t.ContinuationID {
+			return fmt.Errorf("Recovery transition requires matching source, parent, outcome, and idempotency key")
+		}
+		if t.Outcome != string(recoveryModelResponse) && t.Outcome != string(recoveryToolResult) {
+			return fmt.Errorf("Recovery transition has unsupported outcome %q", t.Outcome)
+		}
+		if t.IdempotencyKey != stableTransitionKey("recovery-continuation", t.ContinuationID) {
+			return fmt.Errorf("Recovery transition idempotency key does not match source")
 		}
 	default:
 		return fmt.Errorf("unsupported Transition type %q", t.Type)

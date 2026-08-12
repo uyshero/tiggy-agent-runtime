@@ -141,7 +141,7 @@ tiggy-manage-agent
 9. 每个 goroutine 和资源都有明确的停止与释放路径。
 10. Event Sequence 和父子关联稳定、可测试。
 
-这些是进程内保证。可选 Transition Hook 提供数据库无关的持久化边界，但 Core 仍不承诺进程退出后的自动恢复和外部副作用 exactly-once。
+这些主要是进程内保证。可选 Transition Hook 与 `Agent.Recover` 可以跨进程校验并应用持久化的确定完成结果；Core 仍不负责选择最新边界、协调恢复 Worker、重放 indeterminate effect，也不承诺外部副作用 exactly-once。
 
 当前 P1 使用顺序 Tool 执行和同步 Event Sink。`Result.Events` 是完整内部诊断轨迹；Sink 在终止事件前失败会中止 Run，只有终止事件投递失败时保留真实执行状态并单独返回投递错误。详细语义见 [Agent Runtime 语义](./runtime.zh-CN.md)。
 

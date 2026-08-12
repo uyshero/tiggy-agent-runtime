@@ -38,23 +38,23 @@ type Result struct {
 
 // Run 从空 State 启动一次同步 Run（无事件 Sink）。
 func (a *Agent) Run(ctx context.Context, input message.Message) (Result, error) {
-	return a.run(ctx, State{}, &input, nil, nil)
+	return a.run(ctx, State{}, &input, nil, nil, nil)
 }
 
 // RunStream 与 Run 相同，但按序把生命周期事件同步投递给 sink。
 func (a *Agent) RunStream(ctx context.Context, input message.Message, sink event.Sink) (Result, error) {
-	return a.run(ctx, State{}, &input, nil, sink)
+	return a.run(ctx, State{}, &input, nil, sink, nil)
 }
 
 // Continue 在已有 State 上追加用户输入并继续 Run（非审批恢复路径）。
 func (a *Agent) Continue(ctx context.Context, previous State, input message.Message, sink event.Sink) (Result, error) {
-	return a.run(ctx, previous, &input, nil, sink)
+	return a.run(ctx, previous, &input, nil, sink, nil)
 }
 
 // Resume 解析挂起 State 中的全部审批，并继续执行原 pending Tool 批次；
 // 不再询问模型或 ApprovalPolicy。
 func (a *Agent) Resume(ctx context.Context, previous State, resolutions []approval.Resolution, sink event.Sink) (Result, error) {
-	return a.run(ctx, previous, nil, resolutions, sink)
+	return a.run(ctx, previous, nil, resolutions, sink, nil)
 }
 
 // run 是 ReAct 主循环：回忆 → 迭代（上下文/模型/工具）→ 观察 → 终态事件。
@@ -62,7 +62,7 @@ func (a *Agent) Resume(ctx context.Context, previous State, resolutions []approv
 // 入参约定：
 //   - input != nil：Continue/Run 路径，追加 User 消息；resolutions 必须为空且无挂起
 //   - input == nil：Resume 路径，用 resolutions 填回挂起的 Tool 批次
-func (a *Agent) run(parent context.Context, previous State, input *message.Message, resolutions []approval.Resolution, sink event.Sink) (result Result, runErr error) {
+func (a *Agent) run(parent context.Context, previous State, input *message.Message, resolutions []approval.Resolution, sink event.Sink, recovery *recoveryStart) (result Result, runErr error) {
 	// 墙钟上限独立于调用方 Context；两者任一取消都会打断循环。
 	ctx, cancel := context.WithTimeout(parent, a.config.Limits.MaxDuration)
 	defer cancel()
@@ -77,7 +77,9 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 	iterations := 0                         // ReAct 迭代（每轮一次模型调用）
 	startedTools := make(map[string]string) // callID -> ToolCallStarted 事件 ID，用于收尾配对
 	continuationID := ""
-	if previous.Suspension != nil {
+	if recovery != nil {
+		continuationID = recovery.sourceTransitionID
+	} else if previous.Suspension != nil {
 		continuationID = previous.Suspension.ID // Resume 时把上一挂起 ID 写入 run.started
 	}
 
@@ -181,7 +183,21 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 	var resumedCalls []message.ToolCall
 	var resumedPlan []approval.PendingCall
 
-	if input != nil {
+	if recovery != nil {
+		// ---- Recovery：completed Transition 已由 Recover 校验并推进到候选 State ----
+		if input != nil || len(resolutions) != 0 || state.Suspension != nil {
+			return finish(StatusFailed, "invalid_recovery_continuation", &RunError{
+				Class: ErrorInternal, Code: "invalid_recovery_continuation", SafeMessage: "The recovery continuation is invalid.",
+			}, nil)
+		}
+		var recoveryErr error
+		turnStart, recallInput, recoveryErr = recoveryTurn(state)
+		if recoveryErr != nil {
+			return finish(StatusFailed, "invalid_recovery_continuation", &RunError{
+				Class: ErrorInvalidInput, Code: "invalid_recovery_continuation", SafeMessage: "The recovery continuation has no valid user turn.", Cause: recoveryErr,
+			}, nil)
+		}
+	} else if input != nil {
 		// ---- Continue / Run：追加 User 输入 ----
 		if len(resolutions) != 0 || state.Suspension != nil {
 			// 挂起态必须走 Resume，不能一边 Continue 一边带 resolutions。
@@ -270,6 +286,19 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 		}
 	}
 
+	// 已恢复的终局 Model Response 不再重复 Recall 或调用 Model，直接完成本轮观察。
+	if recovery != nil && recovery.kind == recoveryModelResponse && len(state.PendingToolCalls()) == 0 {
+		final := message.Clone(state.Messages[len(state.Messages)-1])
+		observation := a.observeMemory(ctx, runID, state.Messages[turnStart:], emit)
+		if observation.err != nil {
+			if observation.canceled {
+				return finish(StatusCanceled, observation.reason, observation.err, nil)
+			}
+			return finish(StatusFailed, observation.reason, observation.err, nil)
+		}
+		return finish(StatusCompleted, "completed", nil, &final)
+	}
+
 	// 按本轮 User 输入做 Memory 回忆；失败策略由 MemoryOptions.RecallFailureMode 决定。
 	recall := a.recallMemory(ctx, runID, recallInput, emit)
 	if recall.err != nil {
@@ -285,6 +314,54 @@ func (a *Agent) run(parent context.Context, previous State, input *message.Messa
 			return finish(StatusFailed, "transition_failed", freezeErr, nil)
 		}
 		stop := a.executeToolBatch(ctx, runID, &state, view, resumedCalls, resumedPlan, bindings, batchDigest, transitions, emit, startedTools, &toolCalls)
+		if stop != nil {
+			return finish(stop.status, stop.reason, stop.err, nil)
+		}
+	}
+	// Recovery 从已提交的 Model Response 继续时，尚未开始的 Tool 批次按正常策略处理。
+	// 从 Tool Result 继续时，批次中剩余调用一律重新进入审批，避免策略漂移导致自动执行。
+	if recovery != nil && len(state.PendingToolCalls()) > 0 {
+		calls := state.PendingToolCalls()
+		var plan []approval.PendingCall
+		var approvalErr *RunError
+		if recovery.kind == recoveryModelResponse {
+			plan, approvalErr = a.approvalPlan(ctx, view, calls)
+		} else {
+			plan = a.recoveryApprovalPlan(view, calls)
+		}
+		if approvalErr != nil {
+			if approvalErr.Class == ErrorCanceled {
+				return finish(StatusCanceled, "context_canceled", approvalErr, nil)
+			}
+			return finish(StatusFailed, "approval_policy_failed", approvalErr, nil)
+		}
+		bindings, batchDigest, freezeErr := a.freezeToolBatch(ctx, transitions, state, view, calls)
+		if freezeErr != nil {
+			return finish(StatusFailed, "transition_failed", freezeErr, nil)
+		}
+		if bindingErr := bindApprovalPlanTransitions(plan, bindings); bindingErr != nil {
+			return finish(StatusFailed, "invalid_tool_plan", &RunError{Class: ErrorInternal, Code: "invalid_tool_plan", SafeMessage: "The Agent could not bind its recovered Tool execution plan.", Cause: bindingErr}, nil)
+		}
+		if requiresApproval(plan) {
+			suspension := approval.Suspension{ID: a.config.IDs("suspension"), TurnStart: turnStart, Calls: plan}
+			nextState := state.Clone()
+			nextState.Suspension = &suspension
+			if commitErr := a.commitStateTransition(ctx, transitions, &state, nextState, "recovery_approval_suspended", recovery.appliedTransitionID); commitErr != nil {
+				return finish(StatusFailed, "transition_failed", commitErr, nil)
+			}
+			for _, pending := range plan {
+				if pending.Behavior != approval.BehaviorRequire {
+					continue
+				}
+				_, _ = emit.emit(event.ApprovalRequired, "", event.ApprovalPayload{
+					ApprovalID: pending.ApprovalID, SuspensionID: suspension.ID, CallID: pending.CallID,
+					Tool: pending.Tool, ArgumentsDigest: pending.ArgumentsDigest, ToolDigest: pending.ToolDigest,
+					Status: "pending", Reason: pending.Reason,
+				})
+			}
+			return finish(StatusSuspended, "approval_required", nil, nil)
+		}
+		stop := a.executeToolBatch(ctx, runID, &state, view, calls, plan, bindings, batchDigest, transitions, emit, startedTools, &toolCalls)
 		if stop != nil {
 			return finish(stop.status, stop.reason, stop.err, nil)
 		}
@@ -605,8 +682,8 @@ func (a *Agent) executeToolBatch(
 		toolContext := withToolExecutionTransition(ctx, runID, binding)
 		toolResult, toolErr := view.Call(toolContext, call)
 		postEffectContext := context.WithoutCancel(ctx)
-		commitEffectOutcome := func(kind TransitionType, outcome string, result *tool.Result) (Transition, *RunError) {
-			private := TransitionPrivateData{ToolArguments: call.Arguments, ToolResult: result}
+		commitEffectOutcome := func(kind TransitionType, outcome string, private TransitionPrivateData) (Transition, *RunError) {
+			private.ToolArguments = call.Arguments
 			terminal, hookErr := commitToolEffectTransition(
 				postEffectContext, transitions, kind, *state, binding, startedTransition.ID, outcome, private,
 			)
@@ -620,7 +697,7 @@ func (a *Agent) executeToolBatch(
 		}
 		if ctx.Err() != nil {
 			// 调用期间取消：补 canceled 结果并终止 Run。
-			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, "canceled", nil)
+			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, "canceled", TransitionPrivateData{})
 			if hookErr != nil {
 				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
 			}
@@ -636,7 +713,11 @@ func (a *Agent) executeToolBatch(
 			var safe *tool.Error
 			if !errors.As(toolErr, &runtimeFailure) && errors.As(toolErr, &safe) {
 				// 模型可处理错误：写入 Tool Result，继续同批/下一轮模型。
-				terminal, hookErr := commitEffectOutcome(TransitionToolEffectCompleted, "tool_error", nil)
+				recoveredError := safeToolErrorResult(safe.Code, safe.SafeMessage)
+				terminal, hookErr := commitEffectOutcome(TransitionToolEffectCompleted, "tool_error", TransitionPrivateData{
+					ToolResult: &recoveredError, ToolResultStateReady: true,
+					ToolResultIsError: true, ToolResultRetryable: safe.Retryable,
+				})
 				if hookErr != nil {
 					return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
 				}
@@ -654,7 +735,7 @@ func (a *Agent) executeToolBatch(
 				continue
 			}
 			// RuntimeError / 未知错误：终止整个 Run（不可安全暴露细节给模型）。
-			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, "runtime_failure", nil)
+			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, "runtime_failure", TransitionPrivateData{})
 			if hookErr != nil {
 				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
 			}
@@ -666,14 +747,17 @@ func (a *Agent) executeToolBatch(
 			delete(startedTools, call.ID)
 			return &toolExecutionStop{status: StatusFailed, reason: "tool_runtime_failed", err: runtimeError}
 		}
-		terminal, hookErr := commitEffectOutcome(TransitionToolEffectCompleted, "succeeded", &toolResult)
-		if hookErr != nil {
-			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
-		}
-
-		// 成功：可能把大结果卸载为 Artifact，再写入 State。
+		// 成功：先完成 Artifact 投影，再持久化可直接恢复进 State 的确定结果。
 		projection := a.projectToolResult(ctx, runID, call, toolResult, toolStarted.ID, emit)
 		if projection.err != nil {
+			outcome := "result_projection_failed"
+			if projection.canceled {
+				outcome = "result_projection_canceled"
+			}
+			terminal, hookErr := commitEffectOutcome(TransitionToolEffectIndeterminate, outcome, TransitionPrivateData{ToolResult: &toolResult})
+			if hookErr != nil {
+				return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
+			}
 			if projection.err.Class == ErrorEventSink {
 				return &toolExecutionStop{status: StatusFailed, reason: "event_sink_failed", err: projection.err}
 			}
@@ -692,6 +776,12 @@ func (a *Agent) executeToolBatch(
 				return &toolExecutionStop{status: StatusCanceled, reason: projection.reason, err: projection.err}
 			}
 			return &toolExecutionStop{status: StatusFailed, reason: projection.reason, err: projection.err}
+		}
+		terminal, hookErr := commitEffectOutcome(TransitionToolEffectCompleted, "succeeded", TransitionPrivateData{
+			ToolResult: &projection.result, ToolResultStateReady: true,
+		})
+		if hookErr != nil {
+			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: hookErr}
 		}
 		if commitErr := a.appendToolResultTransition(postEffectContext, transitions, state, call, projection.result, "tool_result_committed", terminal.ID); commitErr != nil {
 			return &toolExecutionStop{status: StatusFailed, reason: "transition_failed", err: commitErr}
@@ -831,16 +921,18 @@ func (a *Agent) appendToolResult(state *State, call message.ToolCall, result too
 
 // appendToolError 把安全错误写成 Tool Result（IsError=true），供模型继续推理。
 func (a *Agent) appendToolError(state *State, call message.ToolCall, code, safeMessage string, retryable bool) error {
-	metadata, _ := json.Marshal(map[string]string{"code": code})
-	if err := a.appendToolResult(state, call, tool.Result{
-		Content: []message.Content{{Type: message.ContentText, Text: safeMessage}}, State: metadata,
-	}); err != nil {
+	if err := a.appendToolResult(state, call, safeToolErrorResult(code, safeMessage)); err != nil {
 		return err
 	}
 	last := &state.Messages[len(state.Messages)-1]
 	last.Content[0].ToolResult.IsError = true
 	last.Content[0].ToolResult.Retryable = retryable
 	return nil
+}
+
+func safeToolErrorResult(code, safeMessage string) tool.Result {
+	metadata, _ := json.Marshal(map[string]string{"code": code})
+	return tool.Result{Content: []message.Content{{Type: message.ContentText, Text: safeMessage}}, State: metadata}
 }
 
 // closePendingTools 在非挂起收口时，为尚未有 Result 的 Call 补 interrupted 结果并配对事件。

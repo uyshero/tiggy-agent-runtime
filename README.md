@@ -14,7 +14,7 @@ The generated clients that call Tiggy Manage Agent over HTTP/SSE remain separate
 
 ## Status
 
-P3 implementation is complete. The repository now provides provider-neutral contracts, an optional OpenAI-compatible Adapter, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, an optional fail-closed Durable Transition Hook, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic fault evaluation. The current version is not yet production-ready.
+P3 implementation is complete. The repository now provides provider-neutral contracts, an optional OpenAI-compatible Adapter, a bounded sequential ReAct loop, digest-bound Tool approval suspension and resume, an optional fail-closed Durable Transition Hook with validated completed-result recovery, Toolkit and built-in execution boundaries, MCP transports with an external compatibility suite, explicit Skill activation, token budget planning, structurally safe context compression, bounded large Tool Result offload, scoped Memory quality contracts, read-only logging/metrics/OpenTelemetry observers, a versioned integrity-linked Run Recorder, and deterministic fault evaluation. The current version is not yet production-ready.
 
 ## Module
 
@@ -73,7 +73,7 @@ Release metadata is audited separately because it includes owner-controlled deci
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.2.0
+make release-verify RELEASE_VERSION=v0.2.1
 ```
 
 See [Release readiness](./docs/release-readiness.md) for the current technical gates, blockers, and owner decisions. Passing the audit is necessary but does not authorize publication.
@@ -134,6 +134,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [ADR 0018: Progressive capability disclosure](./docs/adr/0018-progressive-capability-disclosure.md)
 - [ADR 0019: Dynamic capability activation](./docs/adr/0019-dynamic-capability-activation.md)
 - [ADR 0020: Durable Transition Hook](./docs/adr/0020-durable-transition-hook.md)
+- [ADR 0021: Recovery Continuation API](./docs/adr/0021-recovery-continuation-api.md)
 - [Compatibility changelog](./CHANGELOG.md)
 
 ## Relationship to Tiggy Manage Agent
