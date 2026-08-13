@@ -2,17 +2,16 @@
 package builtin
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"strings"
 
+	"github.com/uyshero/tiggy-agent-runtime/internal/strictjson"
 	"github.com/uyshero/tiggy-agent-runtime/permission"
 	"github.com/uyshero/tiggy-agent-runtime/safespace"
 	"github.com/uyshero/tiggy-agent-runtime/tool"
@@ -22,15 +21,7 @@ const maximumPathBytes = 4096 // 路径参数字节上限
 
 // decodeArguments 解析工具入参 JSON：禁止未知字段，且只允许单个 JSON 值。
 func decodeArguments(input json.RawMessage, destination any) error {
-	decoder := json.NewDecoder(bytes.NewReader(input))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return invalidArguments(err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			err = fmt.Errorf("multiple JSON values")
-		}
+	if err := strictjson.DecodeBytes(input, destination); err != nil {
 		return invalidArguments(err)
 	}
 	return nil

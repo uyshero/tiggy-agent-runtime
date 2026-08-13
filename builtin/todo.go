@@ -1,13 +1,12 @@
 package builtin
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
+	"github.com/uyshero/tiggy-agent-runtime/internal/strictjson"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/model"
 	"github.com/uyshero/tiggy-agent-runtime/tool"
@@ -227,16 +226,8 @@ func ExtractLatestTodoState(messages []message.Message) (TodoState, bool, error)
 			if len(result.State) == 0 {
 				return TodoState{}, true, fmt.Errorf("todo tool result state is missing")
 			}
-			decoder := json.NewDecoder(bytes.NewReader(result.State))
-			decoder.DisallowUnknownFields()
 			var state TodoState
-			if err := decoder.Decode(&state); err != nil {
-				return TodoState{}, true, fmt.Errorf("todo tool result state: %w", err)
-			}
-			if err := decoder.Decode(&struct{}{}); err != io.EOF {
-				if err == nil {
-					err = fmt.Errorf("multiple JSON values")
-				}
+			if err := strictjson.DecodeBytes(result.State, &state); err != nil {
 				return TodoState{}, true, fmt.Errorf("todo tool result state: %w", err)
 			}
 			cloned := cloneTodoState(&state)

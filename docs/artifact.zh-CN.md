@@ -26,7 +26,7 @@ runtime, err := agent.New(agent.Config{
 
 ## Payload 和 Reference
 
-`artifact.NewRequest` 把完整且已校验的 `message.ToolResult`（包括 Content、State、Call ID 和 Tool Name）序列化为 `tiggy.artifact.tool-result.v1`。授权 Retrieval Adapter 可通过 `DecodeToolResult` 严格解码同一 Envelope。
+`artifact.NewRequest` 把完整且已校验的 `message.ToolResult`（包括 Content、State、Call ID 和 Tool Name）序列化为 `tiggy.artifact.tool-result.v1`。授权 Retrieval Adapter 可通过 `DecodeToolResult` 严格解码同一 Envelope；未知字段、任意嵌套层级的重复对象键和尾随值都会被拒绝。
 
 每个 Request 包含精确 Byte、Media Type `application/vnd.tiggy.tool-result+json;version=1` 和 `sha256:<hex>` Digest。Offloader 可保持 Inline 或返回 Reference。只有 Reference 的 Media Type、Byte Size 和 Digest 与 Request 匹配时，Core 才接受 Offloaded Decision。
 

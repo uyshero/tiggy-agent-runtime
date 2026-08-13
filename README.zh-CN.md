@@ -75,7 +75,7 @@ make verify
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.2.2
+make release-verify RELEASE_VERSION=v0.2.3
 ```
 
 当前技术门禁、阻塞项和 Owner 决策见[发布就绪清单](./docs/release-readiness.zh-CN.md)。审计通过是必要条件，但不代表已获得发布授权。
@@ -88,6 +88,7 @@ make release-verify RELEASE_VERSION=v0.2.2
 - [依赖准入规则](./docs/dependencies.zh-CN.md)
 - [工程标准](./docs/standards.zh-CN.md)
 - [Agent Runtime 语义](./docs/runtime.zh-CN.md)
+- [Model 契约说明](./docs/model-contract.zh-CN.md)
 - [Toolkit 语义](./docs/toolkit.zh-CN.md)
 - [SafeSpace 语义](./docs/safespace.zh-CN.md)
 - [Permission Policy 语义](./docs/permission.zh-CN.md)
@@ -108,6 +109,7 @@ make release-verify RELEASE_VERSION=v0.2.2
 - [Run Recorder 语义](./docs/record.zh-CN.md)
 - [Context 与 Memory 故障注入](./docs/fault-injection.zh-CN.md)
 - [Agent 测试工具手册](./docs/agenttest.zh-CN.md)
+- [Fuzz 与 Benchmark](./docs/fuzz-and-benchmarks.zh-CN.md)
 - [真实 Provider 契约验收](./docs/live-provider.zh-CN.md)
 - [OpenAI-compatible Provider Adapter](./docs/provider-openai.zh-CN.md)
 - [Runtime 可靠性评测](./docs/reliability-evaluation.zh-CN.md)

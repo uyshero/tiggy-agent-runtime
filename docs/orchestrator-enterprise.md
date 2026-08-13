@@ -48,6 +48,11 @@ and Event payloads. An adapter instance should already be bound to the
 Enterprise execution scope and lease claim. This prevents Core protocols from
 becoming coupled to one database schema or tenancy model.
 
+Event protocol v2 identifies one Core call with `InvocationID`. A durable Sink
+should use `(ExecutionID, InvocationID, Sequence)` as its event uniqueness and
+ordering key. This identity is observational only: it must not replace the
+checkpoint version, lease epoch, or fencing token as progress authority.
+
 ## Worker Flow
 
 ```text

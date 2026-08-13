@@ -46,6 +46,10 @@ Core Value，并实现以下注入 Port：
 数据。Adapter 实例在构造时就应绑定 Enterprise Execution Scope 与 Lease Claim，
 从而避免 Core 协议耦合某个数据库 Schema 或租户模型。
 
+Event 协议 v2 使用 `InvocationID` 标识一次 Core 调用。持久化 Sink 应使用
+`(ExecutionID, InvocationID, Sequence)` 作为事件唯一性和排序键。该标识只用于
+观测，不得代替 Checkpoint Version、Lease Epoch 或 Fencing Token 成为进度权威。
+
 ## Worker 流程
 
 ```text

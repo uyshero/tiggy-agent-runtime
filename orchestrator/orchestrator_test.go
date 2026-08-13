@@ -316,9 +316,24 @@ func TestReadBriefRejectsUnknownAndTrailingJSON(t *testing.T) {
 	if _, err := ReadBrief(bytes.NewBufferString(unknown)); err == nil {
 		t.Fatal("expected unknown field error")
 	}
+	duplicate := `{"id":"b","goal":"first","goal":"second","tasks":[{"id":"t","objective":"o","subagent":"s","output":{"name":"o.json","media_type":"application/json"}}]}`
+	if _, err := ReadBrief(bytes.NewBufferString(duplicate)); err == nil {
+		t.Fatal("expected duplicate key error")
+	}
+	nestedDuplicate := `{"id":"b","goal":"g","tasks":[{"id":"t","objective":"o","subagent":"s","output":{"name":"one.json","name":"two.json","media_type":"application/json"}}]}`
+	if _, err := ReadBrief(bytes.NewBufferString(nestedDuplicate)); err == nil {
+		t.Fatal("expected nested duplicate key error")
+	}
 	brief, err := ReadBrief(bytes.NewBufferString(valid))
 	if err != nil || brief.ID != "b" {
 		t.Fatalf("brief = %#v, err = %v", brief, err)
+	}
+}
+
+func TestVerificationSpecRejectsDuplicateConfigKey(t *testing.T) {
+	spec := VerificationSpec{Verifier: VerifierJSONSchema, Config: json.RawMessage(`{"type":"string","type":"number"}`)}
+	if err := spec.Validate(); err == nil {
+		t.Fatal("expected duplicate verifier config key error")
 	}
 }
 
@@ -347,9 +362,27 @@ func TestRunWithSinkEmitsOrderedLifecycle(t *testing.T) {
 		t.Fatalf("events = %#v", events)
 	}
 	for i, event := range events {
-		if event.Type != want[i] || event.Sequence != int64(i+1) {
+		if event.Type != want[i] || event.Sequence != int64(i+1) || event.ProtocolVersion != ProtocolV2 || event.InvocationID == "" || event.InvocationID != report.InvocationID {
 			t.Fatalf("event %d = %#v", i, event)
 		}
+	}
+}
+
+func TestEventProtocolV1RemainsValidAndV2RequiresInvocation(t *testing.T) {
+	base := Event{ID: "event-1", ExecutionID: "execution-1", BriefID: "brief-1", Type: EventStarted, Sequence: 1, CreatedAt: time.Unix(1, 0)}
+	v1 := base
+	v1.ProtocolVersion = ProtocolV1
+	if err := v1.Validate(); err != nil {
+		t.Fatalf("v1 event validation: %v", err)
+	}
+	v2 := base
+	v2.ProtocolVersion = ProtocolV2
+	if err := v2.Validate(); err == nil {
+		t.Fatal("expected v2 event without invocation id to fail")
+	}
+	v2.InvocationID = "invocation-1"
+	if err := v2.Validate(); err != nil {
+		t.Fatalf("v2 event validation: %v", err)
 	}
 }
 

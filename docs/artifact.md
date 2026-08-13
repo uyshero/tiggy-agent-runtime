@@ -26,7 +26,7 @@ Thresholds apply to the encoded envelope, not only visible text. Zero values sel
 
 ## Payload and Reference
 
-`artifact.NewRequest` serializes the complete validated `message.ToolResult`, including Content, State, Call ID, and Tool name, as `tiggy.artifact.tool-result.v1`. `DecodeToolResult` strictly decodes the same envelope for authorized retrieval adapters.
+`artifact.NewRequest` serializes the complete validated `message.ToolResult`, including Content, State, Call ID, and Tool name, as `tiggy.artifact.tool-result.v1`. `DecodeToolResult` strictly decodes the same envelope for authorized retrieval adapters, rejecting unknown fields, duplicate object keys at any nesting level, and trailing values.
 
 Every Request includes the exact bytes, media type `application/vnd.tiggy.tool-result+json;version=1`, and a `sha256:<hex>` digest. The Offloader may keep it inline or return a Reference. Core accepts an offloaded Decision only when its media type, byte size, and digest match the Request.
 

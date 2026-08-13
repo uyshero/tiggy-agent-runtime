@@ -248,6 +248,7 @@ type TaskReport struct {
 
 type Report struct {
 	ExecutionID        string              `json:"execution_id"`
+	InvocationID       string              `json:"invocation_id"`
 	CheckpointVersion  uint64              `json:"checkpoint_version,omitempty"`
 	BriefID            string              `json:"brief_id"`
 	Status             Status              `json:"status"`
@@ -266,7 +267,7 @@ func (o Orchestrator) Run(ctx context.Context, brief Brief) (Report, error) {
 // RunWithSink executes a Brief and emits task lifecycle events synchronously.
 // A Sink error is terminal and stops orchestration, just like a Subagent error.
 func (o Orchestrator) RunWithSink(ctx context.Context, brief Brief, sink Sink) (Report, error) {
-	return o.run(ctx, brief, sink, nil)
+	return o.run(ctx, brief, sink, nil, "")
 }
 
 // Resume loads and validates an existing checkpoint, then continues the same
@@ -275,23 +276,35 @@ func (o Orchestrator) Resume(ctx context.Context, executionID string, brief Brie
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ids := o.IDs
+	if ids == nil {
+		ids = randomID
+	}
+	invocationID := ids("orchestrator-invocation")
+	failedReport := func(runErr *RunError) (Report, error) {
+		return Report{ExecutionID: executionID, InvocationID: invocationID, BriefID: brief.ID, Status: StatusFailed, Error: errorPayload(runErr)}, runErr
+	}
+	if strings.TrimSpace(invocationID) == "" {
+		runErr := &RunError{Class: ErrorInternal, Code: "invalid_invocation_id", SafeMessage: "The orchestration could not create an invocation identifier."}
+		return failedReport(runErr)
+	}
 	if o.Checkpoints == nil || o.Store == nil {
 		runErr := &RunError{Class: ErrorCheckpoint, Code: "recovery_unavailable", SafeMessage: "Checkpoint recovery is not configured."}
-		return Report{ExecutionID: executionID, BriefID: brief.ID, Status: StatusFailed, Error: errorPayload(runErr)}, runErr
+		return failedReport(runErr)
 	}
 	snapshot, exists, err := callCheckpointLoad(ctx, o.Checkpoints, executionID)
 	if err != nil {
 		runErr := &RunError{Class: ErrorCheckpoint, Code: "checkpoint_load_failed", SafeMessage: "The execution checkpoint could not be loaded.", Cause: err}
-		return Report{ExecutionID: executionID, BriefID: brief.ID, Status: StatusFailed, Error: errorPayload(runErr)}, runErr
+		return failedReport(runErr)
 	}
 	if !exists {
 		runErr := &RunError{Class: ErrorCheckpoint, Code: "checkpoint_not_found", SafeMessage: "The execution checkpoint was not found."}
-		return Report{ExecutionID: executionID, BriefID: brief.ID, Status: StatusFailed, Error: errorPayload(runErr)}, runErr
+		return failedReport(runErr)
 	}
-	return o.run(ctx, brief, sink, &snapshot)
+	return o.run(ctx, brief, sink, &snapshot, invocationID)
 }
 
-func (o Orchestrator) run(ctx context.Context, brief Brief, sink Sink, recovery *ExecutionSnapshot) (Report, error) {
+func (o Orchestrator) run(ctx context.Context, brief Brief, sink Sink, recovery *ExecutionSnapshot, invocationID string) (Report, error) {
 	ids := o.IDs
 	if ids == nil {
 		ids = randomID
@@ -306,9 +319,17 @@ func (o Orchestrator) run(ctx context.Context, brief Brief, sink Sink, recovery 
 	} else {
 		executionID = ids("execution")
 	}
-	report := Report{ExecutionID: executionID, BriefID: brief.ID, Tasks: make([]TaskReport, 0, len(brief.Tasks))}
+	if invocationID == "" {
+		invocationID = ids("orchestrator-invocation")
+	}
+	report := Report{ExecutionID: executionID, InvocationID: invocationID, BriefID: brief.ID, Tasks: make([]TaskReport, 0, len(brief.Tasks))}
 	if strings.TrimSpace(executionID) == "" {
 		runErr := &RunError{Class: ErrorInternal, Code: "invalid_execution_id", SafeMessage: "The orchestration could not create an execution identifier."}
+		report.Status, report.Error = StatusFailed, errorPayload(runErr)
+		return report, runErr
+	}
+	if strings.TrimSpace(invocationID) == "" {
+		runErr := &RunError{Class: ErrorInternal, Code: "invalid_invocation_id", SafeMessage: "The orchestration could not create an invocation identifier."}
 		report.Status, report.Error = StatusFailed, errorPayload(runErr)
 		return report, runErr
 	}
@@ -400,7 +421,7 @@ func (o Orchestrator) run(ctx context.Context, brief Brief, sink Sink, recovery 
 			return nil
 		}
 		sequence++
-		return callSink(sink, Event{ProtocolVersion: ProtocolV1, ID: ids("orchestrator-event"), ExecutionID: executionID, BriefID: brief.ID, TaskID: taskID, Type: eventType, Sequence: sequence, CreatedAt: now().UTC(), Status: status, ArtifactDigest: artifactDigest, Error: errorPayload(runErr)})
+		return callSink(sink, Event{ProtocolVersion: ProtocolV2, ID: ids("orchestrator-event"), ExecutionID: executionID, InvocationID: invocationID, BriefID: brief.ID, TaskID: taskID, Type: eventType, Sequence: sequence, CreatedAt: now().UTC(), Status: status, ArtifactDigest: artifactDigest, Error: errorPayload(runErr)})
 	}
 	if err := emit(EventStarted, "", "running", "", nil); err != nil {
 		runErr := sinkError(err)

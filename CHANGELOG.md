@@ -4,6 +4,49 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+## [0.2.3] - 2026-08-13
+
+### Added
+
+- Orchestrator Event protocol v2 and `Report` now carry an Invocation ID for
+  each `Run` or `Resume`, making `(ExecutionID, InvocationID, Sequence)` an
+  unambiguous ordering identity across checkpoint recovery calls.
+- Release verification now compares the current public Go API with the previous
+  stable tag and fails on unacknowledged incompatible changes.
+- Closed Runtime JSON contracts now share one strict decoder that rejects
+  unknown fields, duplicate object keys at any nesting level, and trailing
+  values before applying protocol-specific validation.
+- Deterministic fuzz targets now cover strict JSON, Briefs, Artifact envelopes,
+  and OpenAI-compatible SSE assembly; Orchestrator benchmarks cover large Brief
+  decoding, Snapshot validation, and 100-task sequential execution.
+
+### Compatibility
+
+- `Event.Validate` continues to accept stored Orchestrator Event protocol v1
+  values from v0.2.2. New calls emit protocol v2; consumers persisting new
+  Events must accept the additive `invocation_id` field and v2 protocol name.
+- Briefs, Skill manifests, Artifact envelopes, verifier configs, built-in Tool
+  arguments, and Todo state that contain duplicate JSON keys are now rejected
+  instead of accepting the last value.
+- `ToolDefinition.OutputSchema` remains descriptive provider/MCP metadata and
+  is not applied to the typed multi-block `tool.Result`. The otherwise
+  unconsumed `model.Capabilities` DTO is deprecated until a versioned Runtime
+  capability-discovery and selection contract exists; neither clarification
+  changes execution behavior.
+
+### Release Notes
+
+- This pre-v1 patch makes Orchestrator events unambiguous across repeated
+  `Resume` calls and hardens closed JSON contracts without adding Worker,
+  queue, lease, tenant, database, or Enterprise dependencies to Core.
+- Go 1.25.12 or later remains required. New Event consumers must accept
+  `tiggy.runtime.orchestrator-event.v2` and persist `invocation_id`; stored v1
+  events remain valid for reading.
+- Rollback to v0.2.2 requires new Event consumers to stop producing v2 events.
+  Stored v2 events may remain as observational records, but a v0.2.2 executor
+  cannot validate them. Existing checkpoint v1 snapshots remain compatible.
+  Repository maintainers own tag revocation and security replacement releases.
+
 ## [0.2.2] - 2026-08-13
 
 ### Added

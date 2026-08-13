@@ -36,6 +36,18 @@ func TestToolResultArtifactRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecodeToolResultRejectsDuplicateKeys(t *testing.T) {
+	t.Parallel()
+	for _, payload := range []string{
+		`{"protocol_version":"tiggy.artifact.tool-result.v1","protocol_version":"tiggy.artifact.tool-result.v1","result":{}}`,
+		`{"protocol_version":"tiggy.artifact.tool-result.v1","result":{"call_id":"call_1","name":"report","name":"other","content":[{"type":"text","text":"value"}]}}`,
+		`{"protocol_version":"tiggy.artifact.tool-result.v1","result":{"call_id":"call_1","name":"report","content":[{"type":"text","text":"value"}],"state":{"cursor":1,"cursor":2}}}`,
+	} {
+		_, err := artifact.DecodeToolResult([]byte(payload))
+		assertArtifactCode(t, err, artifact.ErrorInvalidRequest)
+	}
+}
+
 func TestBoundedOffloaderKeepsSmallResultInline(t *testing.T) {
 	t.Parallel()
 

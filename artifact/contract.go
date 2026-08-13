@@ -2,15 +2,14 @@
 package artifact
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
+	"github.com/uyshero/tiggy-agent-runtime/internal/strictjson"
 	"github.com/uyshero/tiggy-agent-runtime/message"
 	"github.com/uyshero/tiggy-agent-runtime/tool"
 )
@@ -162,14 +161,9 @@ func NewRequest(runID string, call message.ToolCall, result tool.Result) (Reques
 
 // DecodeToolResult strictly restores one ProtocolV1 Tool Result envelope.
 func DecodeToolResult(payload []byte) (message.ToolResult, error) {
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
 	var envelope ToolResultEnvelope
-	if err := decoder.Decode(&envelope); err != nil {
+	if err := strictjson.DecodeBytes(payload, &envelope); err != nil {
 		return message.ToolResult{}, &Error{Code: ErrorInvalidRequest, Cause: err}
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return message.ToolResult{}, &Error{Code: ErrorInvalidRequest, Cause: fmt.Errorf("artifact payload must contain one JSON value")}
 	}
 	if envelope.ProtocolVersion != ProtocolV1 {
 		return message.ToolResult{}, &Error{Code: ErrorInvalidRequest, Cause: fmt.Errorf("unsupported artifact protocol %q", envelope.ProtocolVersion)}

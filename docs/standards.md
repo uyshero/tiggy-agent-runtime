@@ -147,6 +147,11 @@ Tests must be deterministic by default and require no real model, database, or n
 
 - Public Go APIs follow semantic versioning after `v1.0.0`.
 - Before `v1`, breaking changes are allowed but documented in release notes.
+- `make api-compat` compares the current module with the latest reachable stable
+  tag. An incompatible pre-v1 change fails by default; it requires both
+  `ALLOW_BREAKING_API=1` and a `### Breaking Changes` section in the candidate's
+  changelog. Incompatible changes cannot be allowed by this escape hatch at or
+  after v1.
 - Serialized Message, Event, and snapshot formats carry explicit protocol versions before persistence is supported.
 - Adding an event type is additive; changing an existing event's meaning is breaking.
 - Error classes and terminal reasons are compatibility contracts.

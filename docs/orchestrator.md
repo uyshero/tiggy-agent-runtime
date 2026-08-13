@@ -60,11 +60,16 @@ owned `TaskSpec`. It can create a new Agent with task-specific Memory Scope,
 Toolkit groups, SafeSpace root, limits, and credentials. The same Brief may be
 run repeatedly; each report and event stream has a separate Execution ID.
 
-`ReadBrief` strictly decodes one JSON value, rejects unknown fields and trailing
-data, and validates task order before execution. `RunWithSink` emits a separate
-versioned Orchestrator event stream with monotonic sequence numbers. The Sink is
-synchronous and fail-closed; its events contain artifact digests, not artifact
-bodies.
+`ReadBrief` strictly decodes one JSON value, rejects unknown fields, duplicate
+object keys at any nesting level, and trailing data, then validates task order
+before execution. Verifier configs use the same duplicate-key rule even when a
+Brief is constructed directly as Go values. `RunWithSink` emits a separate
+versioned Orchestrator event stream. Event protocol v2 assigns one
+`InvocationID` to each `Run` or `Resume`; sequence numbers start at 1 and are
+monotonic within that invocation. The stable ordering identity is therefore
+`(ExecutionID, InvocationID, Sequence)`. The Sink is synchronous and
+fail-closed; its events contain artifact digests, not artifact bodies. Event
+protocol v1 remains accepted by `Event.Validate` for stored v0.2.2 events.
 
 Failures return `*RunError` with stable `ErrorClass` and code values. Report and
 Event JSON contain only the safe `ErrorPayload`; the original cause remains on
@@ -124,7 +129,8 @@ validates the checkpoint protocol, Runtime version, Brief digest, progress,
 budgets, and every referenced Artifact through `Store.Get`. It reconstructs
 completed task reports from references and begins at `NextTask`; a completed
 snapshot returns without resolving any Subagent. Resume events keep the same
-Execution ID and begin a new per-call sequence at 1.
+Execution ID, receive a new Invocation ID, and begin that invocation's sequence
+at 1. The returned Report carries both identities.
 
 `InMemoryCheckpointStore` is a bounded, concurrent, process-local reference
 implementation. Compare-and-swap prevents two workers from committing the same

@@ -1,20 +1,18 @@
 package skill
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"path"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/uyshero/tiggy-agent-runtime/internal/strictjson"
 	"github.com/uyshero/tiggy-agent-runtime/safespace"
 )
 
@@ -166,91 +164,11 @@ func (c *Catalog) Descriptors() []Descriptor {
 }
 
 func decodeManifest(data []byte) (Manifest, error) {
-	if err := rejectDuplicateJSONKeys(data); err != nil {
-		return Manifest{}, err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	var value Manifest
-	if err := decoder.Decode(&value); err != nil {
-		return Manifest{}, err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			err = fmt.Errorf("manifest contains multiple JSON values")
-		}
+	if err := strictjson.DecodeBytes(data, &value); err != nil {
 		return Manifest{}, err
 	}
 	return value, nil
-}
-
-func rejectDuplicateJSONKeys(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := scanJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		if err == nil {
-			err = fmt.Errorf("manifest contains multiple JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func scanJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return fmt.Errorf("manifest object key is not a string")
-			}
-			if _, exists := seen[key]; exists {
-				return fmt.Errorf("manifest contains duplicate key %q", key)
-			}
-			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("invalid manifest object: %w", err)
-		}
-		if closing != json.Delim('}') {
-			return fmt.Errorf("invalid manifest object delimiter %q", closing)
-		}
-	case '[':
-		for decoder.More() {
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("invalid manifest array: %w", err)
-		}
-		if closing != json.Delim(']') {
-			return fmt.Errorf("invalid manifest array delimiter %q", closing)
-		}
-	default:
-		return fmt.Errorf("invalid manifest delimiter %q", delimiter)
-	}
-	return nil
 }
 
 func validateManifest(manifest Manifest, directory, directoryName, manifestPath string, limits Limits) (catalogSkill, error) {

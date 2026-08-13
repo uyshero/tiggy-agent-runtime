@@ -75,7 +75,7 @@ Release metadata is audited separately because it includes owner-controlled deci
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.2.2
+make release-verify RELEASE_VERSION=v0.2.3
 ```
 
 See [Release readiness](./docs/release-readiness.md) for the current technical gates, blockers, and owner decisions. Passing the audit is necessary but does not authorize publication.
@@ -87,6 +87,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [Dependency policy](./docs/dependencies.md)
 - [Engineering standards](./docs/standards.md)
 - [Agent Runtime semantics](./docs/runtime.md)
+- [Model contract notes](./docs/model-contract.md)
 - [Toolkit semantics](./docs/toolkit.md)
 - [SafeSpace semantics](./docs/safespace.md)
 - [Permission Policy semantics](./docs/permission.md)
@@ -108,6 +109,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [Run Recorder semantics](./docs/record.md)
 - [Context and Memory fault injection](./docs/fault-injection.md)
 - [Agent test kit guide](./docs/agenttest.md)
+- [Fuzzing and benchmarks](./docs/fuzz-and-benchmarks.md)
 - [Live Provider contract verification](./docs/live-provider.md)
 - [OpenAI-compatible Provider Adapter](./docs/provider-openai.md)
 - [Runtime reliability evaluation](./docs/reliability-evaluation.md)

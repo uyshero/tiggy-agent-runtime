@@ -1,16 +1,15 @@
 package orchestrator
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"runtime/debug"
 	"strings"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/uyshero/tiggy-agent-runtime/internal/strictjson"
 )
 
 const (
@@ -32,8 +31,11 @@ func (s VerificationSpec) Validate() error {
 	if strings.TrimSpace(s.Verifier) == "" || s.Verifier != strings.TrimSpace(s.Verifier) {
 		return fmt.Errorf("verifier name is required without surrounding whitespace")
 	}
-	if len(s.Config) > 0 && !json.Valid(s.Config) {
-		return fmt.Errorf("verifier config must be valid JSON")
+	if len(s.Config) > 0 {
+		var document any
+		if err := strictjson.DecodeBytes(s.Config, &document); err != nil {
+			return fmt.Errorf("verifier config must contain one unambiguous JSON value: %w", err)
+		}
 	}
 	return nil
 }
@@ -83,13 +85,8 @@ func (TextVerifier) Verify(ctx context.Context, task TaskSpec, output Artifact) 
 	}
 	var config TextVerificationConfig
 	if task.Verification != nil && len(task.Verification.Config) > 0 {
-		decoder := json.NewDecoder(bytes.NewReader(task.Verification.Config))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&config); err != nil {
+		if err := strictjson.DecodeBytes(task.Verification.Config, &config); err != nil {
 			return fmt.Errorf("decode text verifier config: %w", err)
-		}
-		if err := decoder.Decode(&struct{}{}); err != io.EOF {
-			return fmt.Errorf("text verifier config must contain one JSON value")
 		}
 	}
 	if config.MinBytes < 0 || config.MaxBytes < 0 || (config.MaxBytes > 0 && config.MinBytes > config.MaxBytes) {

@@ -86,6 +86,7 @@ func TestDiscoveryRejectsInvalidManifests(t *testing.T) {
 	}{
 		{name: "unknown field", manifest: `{"schema":"tiggy.skill/v1","name":"bad","version":"1","description":"bad","instructions":"SKILL.md","extra":true}`},
 		{name: "duplicate JSON key", manifest: `{"schema":"tiggy.skill/v1","name":"bad","name":"bad","version":"1","description":"bad","instructions":"SKILL.md"}`},
+		{name: "nested duplicate JSON key", manifest: `{"schema":"tiggy.skill/v1","name":"bad","version":"1","description":"bad","instructions":"SKILL.md","resources":[{"name":"one","name":"two","path":"a.md"}]}`},
 		{name: "directory mismatch", manifest: `{"schema":"tiggy.skill/v1","name":"other","version":"1","description":"bad","instructions":"SKILL.md"}`},
 		{name: "path traversal", manifest: `{"schema":"tiggy.skill/v1","name":"bad","version":"1","description":"bad","instructions":"../outside.md"}`},
 		{name: "duplicate groups", manifest: `{"schema":"tiggy.skill/v1","name":"bad","version":"1","description":"bad","instructions":"SKILL.md","tool_groups":["read","read"]}`},

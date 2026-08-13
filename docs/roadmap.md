@@ -71,7 +71,15 @@
 
 Deferred items require separate product requirements and architecture decisions. They are not implicit Core commitments.
 
-## Candidate: v0.2.2 Sequential Brief Orchestrator
+## Released: v0.2.3 Orchestrator Protocol Hardening
+
+- [x] Invocation-scoped Orchestrator Event ordering across Resume calls
+- [x] Public Go API compatibility gate against the previous stable tag
+- [x] Shared strict JSON decoding with nested duplicate-key rejection
+- [x] Fuzz targets and Orchestrator performance baselines
+- [x] Model OutputSchema and Capabilities contract clarification
+
+## Released: v0.2.2 Sequential Brief Orchestrator
 
 - [x] Strict Brief parsing, validation, and deterministic task order
 - [x] One isolated Subagent construction and one Artifact output per task

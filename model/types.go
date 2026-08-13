@@ -51,7 +51,10 @@ const (
 )
 
 // ToolDefinition 是暴露给模型的工具定义（含 Input Schema）。
-// OutputSchema 预留，当前 Runtime 不强制校验输出。
+// OutputSchema is descriptive provider/MCP metadata. Runtime preserves it in
+// snapshots and digests but does not validate tool.Result against it because a
+// Result is a sequence of typed Content blocks plus optional State, not one
+// JSON instance.
 type ToolDefinition struct {
 	Name             string               `json:"name"`
 	Description      string               `json:"description,omitempty"`
@@ -158,7 +161,12 @@ type Usage struct {
 	Source            UsageSource `json:"source,omitempty"`
 }
 
-// Capabilities 描述供应商/模型能力，供上层做能力探测或裁剪。
+// Capabilities is descriptive provider/model metadata. Agent does not consult
+// it for model selection, request shaping, fallback, or Tool exposure.
+//
+// Deprecated: no Runtime capability-discovery or selection contract consumes
+// this value. Keep capability discovery adapter-owned until such a contract is
+// explicitly versioned.
 type Capabilities struct {
 	Streaming           bool `json:"streaming"`
 	Vision              bool `json:"vision"`

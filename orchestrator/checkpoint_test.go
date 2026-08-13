@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/uyshero/tiggy-agent-runtime/agenttest"
 )
 
 func TestInMemoryCheckpointStoreCASAndOwnership(t *testing.T) {
@@ -93,8 +95,9 @@ func TestResumeContinuesAfterLastCheckpoint(t *testing.T) {
 	checkpoints, _ := NewInMemoryCheckpointStore(InMemoryCheckpointOptions{})
 	brief := Brief{ID: "brief-1", Goal: "goal", Tasks: []TaskSpec{validTask("one", "worker"), validTask("two", "worker", "one")}}
 	firstOrder := []string{}
+	ids := IDGenerator(agenttest.SequentialIDs())
 	first := Orchestrator{
-		Store: artifacts, Checkpoints: checkpoints, IDs: func(prefix string) string { return prefix + "-1" },
+		Store: artifacts, Checkpoints: checkpoints, IDs: ids,
 		Subagents: Subagents{"worker": scriptedSubagent{order: &firstOrder, fn: func(task TaskSpec, _ []Artifact) (Artifact, error) {
 			if task.ID == "two" {
 				return Artifact{}, errors.New("temporary failure")
@@ -108,7 +111,7 @@ func TestResumeContinuesAfterLastCheckpoint(t *testing.T) {
 	}
 	secondOrder := []string{}
 	second := Orchestrator{
-		Store: artifacts, Checkpoints: checkpoints,
+		Store: artifacts, Checkpoints: checkpoints, IDs: ids,
 		Subagents: Subagents{"worker": scriptedSubagent{order: &secondOrder, fn: func(task TaskSpec, inputs []Artifact) (Artifact, error) {
 			if task.ID != "two" || len(inputs) != 1 || string(inputs[0].Data) != `"one"` {
 				return Artifact{}, fmt.Errorf("task/inputs = %q/%#v", task.ID, inputs)
@@ -121,14 +124,14 @@ func TestResumeContinuesAfterLastCheckpoint(t *testing.T) {
 		events = append(events, event)
 		return nil
 	})
-	if err != nil || report.Status != StatusCompleted || report.ExecutionID != failed.ExecutionID || report.CheckpointVersion != 3 || !reflect.DeepEqual(secondOrder, []string{"two"}) {
+	if err != nil || report.Status != StatusCompleted || report.ExecutionID != failed.ExecutionID || report.InvocationID == failed.InvocationID || report.CheckpointVersion != 3 || !reflect.DeepEqual(secondOrder, []string{"two"}) {
 		t.Fatalf("report = %#v, order = %#v, err = %v", report, secondOrder, err)
 	}
 	if len(report.Tasks) != 2 || report.Tasks[0].TaskID != "one" || report.Tasks[1].TaskID != "two" {
 		t.Fatalf("reconstructed tasks = %#v", report.Tasks)
 	}
 	for index, event := range events {
-		if event.ExecutionID != failed.ExecutionID || event.Sequence != int64(index+1) {
+		if event.ExecutionID != failed.ExecutionID || event.InvocationID != report.InvocationID || event.ProtocolVersion != ProtocolV2 || event.Sequence != int64(index+1) {
 			t.Fatalf("resume event %d = %#v", index, event)
 		}
 	}

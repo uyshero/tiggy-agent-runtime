@@ -158,6 +158,13 @@ func TestExtractLatestTodoStateReportsCorruptState(t *testing.T) {
 	}
 
 	_, ok, err = builtin.ExtractLatestTodoState([]message.Message{
+		todoResultMessage("msg_duplicate", "call_duplicate", json.RawMessage(`{"version":1,"next_id":1,"next_id":2,"items":[]}`), false),
+	})
+	if !ok || err == nil {
+		t.Fatalf("ExtractLatestTodoState accepted duplicate state key: ok %v, err %v", ok, err)
+	}
+
+	_, ok, err = builtin.ExtractLatestTodoState([]message.Message{
 		todoResultMessage("msg_error", "call_error", json.RawMessage(`{}`), true),
 	})
 	if ok || err != nil {

@@ -147,6 +147,9 @@
 
 - `v1.0.0` 后公开 Go API 遵守语义化版本；
 - `v1` 前允许 Breaking Change，但必须写入 Release Note；
+- `make api-compat` 会把当前 Module 与可达的最新稳定 Tag 比较。v1 前的不兼容
+  变更默认失败，只有同时设置 `ALLOW_BREAKING_API=1` 并在候选版本 Changelog
+  增加 `### Breaking Changes` 才能显式放行；v1 及以后不能使用该出口；
 - Message、Event 和未来 Snapshot 在持久化前引入协议版本；
 - 新增 Event Type 是兼容变更，改变已有 Event 语义是 Breaking Change；
 - Error Class 和 Terminal Reason 是兼容契约；

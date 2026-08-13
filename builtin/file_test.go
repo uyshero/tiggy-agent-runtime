@@ -135,6 +135,7 @@ func TestFileToolsValidateBeforePermission(t *testing.T) {
 		{arguments: json.RawMessage(`{"path":"../outside"}`), code: "invalid_path"},
 		{arguments: json.RawMessage(`{"path":"a\u0000b"}`), code: "invalid_path"},
 		{arguments: json.RawMessage(`{"path":"file.txt","extra":true}`), code: "invalid_tool_arguments"},
+		{arguments: json.RawMessage(`{"path":"first.txt","path":"second.txt"}`), code: "invalid_tool_arguments"},
 	} {
 		_, err := read.Execute(context.Background(), test.arguments)
 		assertToolCode(t, err, test.code)
