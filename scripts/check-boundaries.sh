@@ -4,8 +4,16 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_root"
 
+for forbidden_dir in worker workers scheduler queue enterprise; do
+  if [ -d "$forbidden_dir" ]; then
+    echo "Enterprise execution directory does not belong in Core: $forbidden_dir/" >&2
+    exit 1
+  fi
+done
+
 for forbidden in \
   'tiggy-manage-agent/' \
+  'tiggy-manage-agent/internal' \
   'github.com/jackc/pgx' \
   'database/sql' \
   'internal/managedagents' \

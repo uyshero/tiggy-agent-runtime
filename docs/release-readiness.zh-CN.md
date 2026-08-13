@@ -19,13 +19,17 @@
 
 ## 当前阻塞项
 
-当前配置的公开远端已经提供 `v0.2.0` Release Tag，可被匿名 Git 请求获取。这能确认代码可访问，但不能证明法律归属，也不代表后续版本已经获得发布授权。Recovery Continuation 补全改动已经归入 `v0.2.1` 候选版本，在 Tag 推送前仍未公开发布。
+当前配置的公开远端已经提供 `v0.2.1` Release Tag，并以其 Release Commit 作为
+`main`。这能确认代码可访问，但不能证明法律归属或安全响应已经具备实际运维能力。
+Sequential Brief Orchestrator 已归入 `v0.2.2` 候选版本。
 
 - 公开 Module 路径 `github.com/uyshero/tiggy-agent-runtime` 的可用性和所有权仍需 Owner 确认；
 - `security@tiggy.cloud` 的投递与监控需要完成实际运维确认；
-- 有权限的 Owner 尚未批准 Push Tag 和公开发布。
+- 仓库尚未记录完整的组织级发布与安全响应角色分工。
 
-Apache-2.0、私密安全报告地址以及截至 `v0.2.0` 的发布日期已经记录。不得通过虚构归属、运维验证或发布授权来消除剩余事项。
+Apache-2.0、私密安全报告地址以及截至 `v0.2.1` 的发布日期已经记录。Workspace
+Owner 已于 2026-08-13 明确授权准备、打 Tag 并推送 `v0.2.2`。该授权不代表上面的
+法律归属或安全运维事项已经确认。
 
 ## Owner 必须决策
 
@@ -33,8 +37,9 @@ Apache-2.0、私密安全报告地址以及截至 `v0.2.0` 的发布日期已经
 
 - 项目许可证：Apache-2.0；
 - 首个 Tag 基线：`v0.1.0`，日期为 2026-08-04；
-- 最新公开 Release 基线：`v0.2.0`，日期为 2026-08-11；
-- 当前 Release 候选：`v0.2.1`，日期为 2026-08-12；
+- 最新公开 Release 基线：`v0.2.1`，日期为 2026-08-12；
+- 当前 Release 候选：`v0.2.2`，日期为 2026-08-13；
+- Workspace Owner 已于 2026-08-13 授权 `v0.2.2` 发布操作；
 - 发布后的安全策略：支持最新 `0.2.x`，私密报告发送到 `security@tiggy.cloud`。
 
 公开发布前，仓库 Owner 仍需记录：
@@ -56,10 +61,10 @@ make release-audit
 最终候选版本还必须要求指定版本的 Changelog Section 和 `HEAD` 上的精确 Tag：
 
 ```bash
-make release-verify RELEASE_VERSION=v0.2.1
+make release-verify RELEASE_VERSION=v0.2.2
 ```
 
-Changelog 标题格式为 `## [0.2.1] - YYYY-MM-DD`。命令不会创建 Commit 或 Tag，也不会检查公开仓库是否可访问。审计要求候选版本已经提交且工作区清洁，因此它在尚未提交的提取工作区中失败是预期行为。
+Changelog 标题格式为 `## [0.2.2] - YYYY-MM-DD`。命令不会创建 Commit 或 Tag，也不会检查公开仓库是否可访问。审计要求候选版本已经提交且工作区清洁，因此它在尚未提交的提取工作区中失败是预期行为。
 
 ## 当前发布 Checklist
 
@@ -69,15 +74,16 @@ Changelog 标题格式为 `## [0.2.1] - YYYY-MM-DD`。命令不会创建 Commit 
 - [ ] 已确认公开 Module Path 的所有权和仓库可用性；
 - [x] `SECURITY.md` 已包含所需的支持版本、报告方式和 Contact Contract；
 - [x] 本地 `v0.1.0` Tag 指向对应的发布提交；
-- [x] 当前配置的公开远端已经提供 `v0.2.0` Tag；
-- [x] Recovery Continuation 改动已归入带日期的 `v0.2.1` Release Section；
+- [x] 当前配置的公开远端已经提供 `v0.2.1` Tag；
+- [x] Orchestrator 改动已归入带日期的 `v0.2.2` Release Section；
 - [x] `v0.1.0` 基线已记录在 `## [0.1.0] - 2026-08-04`；
 - [x] `v0.1.1` 已记录在 `## [0.1.1] - 2026-08-05`；
 - [x] `v0.1.2` 已记录在 `## [0.1.2] - 2026-08-11`；
 - [x] `v0.2.0` 已记录在 `## [0.2.0] - 2026-08-11`；
-- [x] Tag Commit 上的 `make release-verify RELEASE_VERSION=v0.2.1` 通过；
+- [x] `v0.2.1` 已记录在 `## [0.2.1] - 2026-08-12`；
+- [x] Tag Commit 上的 `make release-verify RELEASE_VERSION=v0.2.2` 通过；
 - [ ] 固定参考 Server 版本的定时 MCP Compatibility 检查为绿色；
 - [x] Release Notes 说明 pre-v1 兼容规则、支持的 Go 版本、已知限制和回滚/撤回 Owner；
-- [ ] 获得有权限的 Owner 对 Push Tag 和公开发布的明确审批。
+- [x] Workspace Owner 已于 2026-08-13 明确批准推送 `v0.2.2` Tag 和 Release Commit。
 
 清单通过后，公开发布仍是独立、由人控制的操作。

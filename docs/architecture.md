@@ -45,6 +45,9 @@ Without one of these pieces, a system may still call a model or execute a tool, 
 agent
   -> message, model, event, tool, toolkit, skill, contextmanager, artifact, memory
 
+orchestrator
+  -> agent, message, Go standard library, approved JSON Schema validator
+
 observe
   -> event, model, Go standard library
 
@@ -117,6 +120,8 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - structured errors, retries and fallback decisions;
 - process-local Tool approval suspension and exact-call resume;
 - optional synchronous fail-closed external Transition Hook and stable Tool idempotency keys;
+- bounded sequential Brief orchestration, verified Artifact handoff, and
+  injectable Artifact/Checkpoint storage Ports;
 - logging, metrics, traces and run recording;
 - deterministic testing and fault injection.
 
@@ -126,6 +131,8 @@ There is no reverse dependency from this repository to `tiggy-manage-agent`.
 - users, tenants, workspaces and RBAC records;
 - PostgreSQL schemas and migrations;
 - Worker queues, leases and distributed scheduling;
+- Worker registration, polling, heartbeat, fencing tokens, retry scheduling,
+  and orphan reaping;
 - database-level durable Agent execution, lease/fencing, and recovery scheduling;
 - enterprise approval identity, persistence, coordination and audit exports;
 - billing, pricing catalogs and settlement;
@@ -147,6 +154,13 @@ The runtime will be designed around these invariants:
 10. Event sequence and parent correlation are stable and testable.
 
 These are primarily in-process guarantees. The optional Transition Hook plus `Agent.Recover` can validate and apply a durably saved completed result across a process boundary. Core still does not select the latest boundary, coordinate recovery Workers, replay indeterminate effects, or guarantee exactly-once external side effects.
+
+The `orchestrator` package adds a serializable `ExecutionSnapshot` and
+compare-and-swap `CheckpointStore`, but it does not change that ownership
+boundary. An Enterprise Worker must acquire and renew its lease before calling
+`Orchestrator.Run` or `Resume`. Its adapter binds authorization and the current
+fencing token to Artifact and checkpoint writes. Lease identity, tenant scope,
+database transactions, and queue messages never enter Core values.
 
 P1 currently uses sequential tool execution and a synchronous Event Sink. `Result.Events` is the complete internal diagnostic trace. Sink failure before a terminal event aborts the run; failure to deliver the terminal event preserves the actual execution status and returns a separate delivery error. See [Agent Runtime semantics](./runtime.md).
 

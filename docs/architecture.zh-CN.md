@@ -43,6 +43,9 @@ Application
 agent
   -> message, model, event, tool, toolkit, skill, contextmanager, artifact, memory
 
+orchestrator
+  -> agent、message、Go 标准库和已准入的 JSON Schema Validator
+
 observe
   -> event、model 和 Go 标准库
 
@@ -115,6 +118,7 @@ tiggy-manage-agent
 - 结构化异常、Retry 和 Fallback；
 - 进程内 Tool 人工审批暂停与精确调用恢复；
 - 可选、同步、失败关闭的外部 Transition Hook 与稳定 Tool 幂等键；
+- 有边界的 Brief 顺序编排、已验证 Artifact 传递，以及可注入的 Artifact/Checkpoint 存储 Port；
 - 日志、指标、Trace 和 Run Recorder；
 - 确定性测试和故障注入。
 
@@ -124,6 +128,7 @@ tiggy-manage-agent
 - 用户、租户、RBAC 和数据库 Workspace；
 - PostgreSQL Schema 和迁移；
 - Worker Queue、Lease 和分布式调度；
+- Worker 注册、轮询、Heartbeat、Fencing Token、重试调度与孤儿任务回收；
 - 数据库级 Durable Agent State Machine、Lease/Fencing 与恢复调度；
 - 企业审批身份、持久化、协调、审计导出和计费；
 - 生成式 OpenAPI Client SDK。
@@ -142,6 +147,12 @@ tiggy-manage-agent
 10. Event Sequence 和父子关联稳定、可测试。
 
 这些主要是进程内保证。可选 Transition Hook 与 `Agent.Recover` 可以跨进程校验并应用持久化的确定完成结果；Core 仍不负责选择最新边界、协调恢复 Worker、重放 indeterminate effect，也不承诺外部副作用 exactly-once。
+
+`orchestrator` 包增加了可序列化的 `ExecutionSnapshot` 和 CAS
+`CheckpointStore`，但没有改变上述归属。Enterprise Worker 必须先获取并续租 Lease，
+再调用 `Orchestrator.Run` 或 `Resume`；其 Adapter 把授权范围和当前 Fencing Token
+绑定到 Artifact 与 Checkpoint 写入。Lease 身份、租户范围、数据库事务和 Queue
+消息都不能进入 Core Value。
 
 当前 P1 使用顺序 Tool 执行和同步 Event Sink。`Result.Events` 是完整内部诊断轨迹；Sink 在终止事件前失败会中止 Run，只有终止事件投递失败时保留真实执行状态并单独返回投递错误。详细语义见 [Agent Runtime 语义](./runtime.zh-CN.md)。
 

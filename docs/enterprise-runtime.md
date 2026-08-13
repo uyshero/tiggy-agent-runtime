@@ -19,6 +19,11 @@ Core provides process-local correctness only:
 Enterprise must add persistence, scheduling, approval identity, tenancy, audit,
 Worker coordination, and crash recovery.
 
+For multi-task Brief execution, the same boundary applies to the
+`orchestrator` package. Core owns task ordering, verification, Artifact
+references, checkpoint validation, and `Resume`; Enterprise owns when and where
+an execution runs. See [Orchestrator Enterprise integration](./orchestrator-enterprise.md).
+
 ## Recommended State Machine
 
 ```text
@@ -141,6 +146,7 @@ Tool replay.
 | Crash recovery orchestration | No | Worker recovery and effect reconciliation |
 | Exactly-once external side effects | No | Idempotency keys, lookup, compensation, or human intervention |
 | Timeline query | Emits Events | Persistence, indexes, permissions, UI |
+| Multi-task Brief progress | Validated checkpoint CAS and `Resume` | Worker lease, fencing, queue, retries, and terminal transaction |
 
 See [Durable Transition Hook](./transition.md) for ordering, private payloads,
 effect classes, and completed-result recovery. In short: Core exposes verifiable execution boundaries;

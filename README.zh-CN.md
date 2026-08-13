@@ -31,6 +31,8 @@ event/    带版本的 Runtime 生命周期事件信封
 tool/     原生 Tool、Result、模型可处理错误和 Runtime Error
 toolkit/  并发安全注册表和每次 Run 不可变快照
 agent/    有边界的 Agent Loop、State、结构化 RunError 和 Event
+orchestrator/  按 Brief 顺序执行任务、验证 Artifact、保存检查点并恢复执行
+examples/orchestrator/ 隔离的两任务 Artifact 传递示例
 agenttest/ 确定性 Model、Tool、时钟、ID、故障注入和 Trace 校验
 safespace/ Root 约束、本地有界读写和确定性目录列表
 permission/ 进程内 Tool 外部效果决策和 Action 白名单
@@ -73,7 +75,7 @@ make verify
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.2.1
+make release-verify RELEASE_VERSION=v0.2.2
 ```
 
 当前技术门禁、阻塞项和 Owner 决策见[发布就绪清单](./docs/release-readiness.zh-CN.md)。审计通过是必要条件，但不代表已获得发布授权。
@@ -92,6 +94,7 @@ make release-verify RELEASE_VERSION=v0.2.1
 - [Tool 人工审批与恢复语义](./docs/approval.zh-CN.md)
 - [Durable Transition Hook](./docs/transition.zh-CN.md)
 - [Enterprise Runtime 持久化参考设计](./docs/enterprise-runtime.zh-CN.md)
+- [Orchestrator Enterprise 接入](./docs/orchestrator-enterprise.zh-CN.md)
 - [Command Runner 语义](./docs/command.zh-CN.md)
 - [MCP Client 语义](./docs/mcp.zh-CN.md)
 - [Skill 语义](./docs/skill.zh-CN.md)

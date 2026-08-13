@@ -12,6 +12,10 @@ Core 只提供进程内正确性：
 
 Enterprise 需要额外提供持久化、调度、审批身份、租户隔离、审计、Worker 协调和崩溃恢复。
 
+多任务 Brief 执行也遵循同一边界：`orchestrator` 负责任务顺序、验证、Artifact
+引用、Checkpoint 校验和 `Resume`；Enterprise 决定一次执行何时、在哪里运行。详见
+[Orchestrator Enterprise 接入](./orchestrator-enterprise.zh-CN.md)。
+
 ## 推荐状态机
 
 ```text
@@ -116,5 +120,6 @@ Enterprise 不能只靠 `Result.State` 宣称 durable execution。启用 `Transi
 | 崩溃恢复编排 | 否 | Worker recovery、effect reconciliation |
 | 外部副作用 Exactly-once | 否 | 幂等键、外部查询、补偿或人工介入 |
 | 时间线查询 | 提供 Event | 持久化、索引、权限、UI |
+| 多任务 Brief 进度 | 校验后的 Checkpoint CAS 与 `Resume` | Worker Lease、Fencing、Queue、重试和终态事务 |
 
 Hook 事件顺序、私有载荷、效果分类和已完成结果恢复见 [Durable Transition Hook](./transition.zh-CN.md)。一句话：Core 负责提供可验证的执行边界和合法 State 推进；Enterprise 负责让任务跨进程、跨人、跨时间可靠地活下去。

@@ -71,6 +71,23 @@
 
 Deferred items require separate product requirements and architecture decisions. They are not implicit Core commitments.
 
+## Candidate: v0.2.2 Sequential Brief Orchestrator
+
+- [x] Strict Brief parsing, validation, and deterministic task order
+- [x] One isolated Subagent construction and one Artifact output per task
+- [x] Explicit Artifact inputs, task verification, lifecycle Events, and structured Reports
+- [x] Artifact Store references, execution budgets, and idempotent Put keys
+- [x] Versioned Execution Snapshot, optimistic Checkpoint Store, and validated Resume
+- [x] In-memory reference Stores, failure-path tests, example, and Enterprise integration contract
+- [x] Maintainer-approved SemVer release containing the public `orchestrator` package
+- [ ] Enterprise Adapter adoption through that tagged release
+
+The last item is implemented in the Enterprise repository, not here. Worker
+queues, leases, heartbeat, fencing, tenancy, durable scheduling, and retry
+policy remain outside Core. Enterprise must not use a local `replace` as a
+substitute for the release gate. See [Orchestrator](./orchestrator.md) and
+[Orchestrator Enterprise integration](./orchestrator-enterprise.md).
+
 ## Candidate: v0.1.2
 
 - [x] Static progressive capability disclosure using existing Toolkit Groups and immutable Run snapshots

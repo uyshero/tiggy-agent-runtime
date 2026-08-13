@@ -4,6 +4,40 @@ All compatibility-relevant changes to public Go APIs, Message/Event protocols, e
 
 ## Unreleased
 
+## [0.2.2] - 2026-08-13
+
+### Added
+
+- The new `orchestrator` package validates a Brief, dispatches sequential tasks
+  to isolated Subagent instances, verifies one output Artifact per task, emits
+  lifecycle Events, stores opaque Artifact references, and returns a complete
+  execution Report.
+- `ExecutionSnapshot`, `CheckpointStore`, `InMemoryCheckpointStore`, and
+  `Orchestrator.Resume` provide validated optimistic checkpoint recovery without
+  adding a database, queue, Worker lease, tenant model, or Enterprise dependency
+  to Core.
+
+### Compatibility
+
+- Orchestration APIs are additive. Checkpointing requires an Artifact Store;
+  existing Agent and non-checkpointed Orchestrator calls retain process-local
+  behavior.
+- Enterprise Worker coordination remains outside Core. Production checkpoint
+  adapters must enforce authorization and the current fencing token on every
+  write; checkpoint CAS alone does not prevent duplicate Subagent execution.
+
+### Release Notes
+
+- This pre-v1 patch adds an opt-in orchestration package without changing
+  existing Agent callers. Go 1.25.12 or later remains required.
+- Production adopters must provide durable Artifact and Checkpoint adapters and
+  keep Worker leases, fencing, queues, tenancy, encryption, and retry policy in
+  the embedding application or Enterprise service.
+- Rollback to v0.2.1 removes the Orchestrator API. Executions containing
+  `tiggy.runtime.orchestrator-checkpoint.v1` snapshots must remain on a
+  v0.2.2-compatible executor until they complete or are explicitly migrated.
+  Repository maintainers own tag revocation and security replacement releases.
+
 ## [0.2.1] - 2026-08-12
 
 ### Added

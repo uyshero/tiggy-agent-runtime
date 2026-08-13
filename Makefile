@@ -19,6 +19,7 @@ fmt-check:
 
 boundaries:
 	sh scripts/check-boundaries.sh
+	sh scripts/test-boundaries.sh
 
 licenses:
 	sh scripts/check-licenses.sh
@@ -41,7 +42,7 @@ provider-contract:
 	TIGGY_RUN_LIVE_PROVIDER_TESTS=0 GOCACHE="$(GOCACHE_DIR)" go test -tags=liveprovider ./integration/liveprovider
 
 # Metadata and repository checks for a release candidate. Set
-# RELEASE_VERSION=v0.2.1 to also require that exact tag at HEAD.
+# RELEASE_VERSION=v0.2.2 to also require that exact tag at HEAD.
 release-audit:
 	sh scripts/check-release-readiness.sh $(if $(RELEASE_VERSION),--release "$(RELEASE_VERSION)")
 

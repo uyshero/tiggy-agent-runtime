@@ -31,6 +31,8 @@ event/    Versioned runtime lifecycle-event envelope
 tool/     Native Tool, Result, model-actionable errors and runtime errors
 toolkit/  Concurrent registry and immutable per-run snapshots
 agent/    Bounded Agent loop, State, structured RunError and events
+orchestrator/  Sequential orchestration, verified artifacts, checkpoints, and Resume
+examples/orchestrator/ Isolated two-task Artifact handoff example
 agenttest/ Deterministic models, tools, clocks, IDs, fault injection, and trace validation
 safespace/ Root-confined bounded local file operations and deterministic listing
 permission/ Process-local Tool effect decisions and action allowlists
@@ -73,7 +75,7 @@ Release metadata is audited separately because it includes owner-controlled deci
 
 ```bash
 make release-audit
-make release-verify RELEASE_VERSION=v0.2.1
+make release-verify RELEASE_VERSION=v0.2.2
 ```
 
 See [Release readiness](./docs/release-readiness.md) for the current technical gates, blockers, and owner decisions. Passing the audit is necessary but does not authorize publication.
@@ -91,6 +93,7 @@ See [Release readiness](./docs/release-readiness.md) for the current technical g
 - [Tool approval and resume semantics](./docs/approval.md)
 - [Durable Transition Hook](./docs/transition.md)
 - [Enterprise Runtime persistence reference](./docs/enterprise-runtime.md)
+- [Orchestrator Enterprise integration](./docs/orchestrator-enterprise.md)
 - [Command Runner semantics](./docs/command.md)
 - [MCP Client semantics](./docs/mcp.md)
 - [Skill semantics](./docs/skill.md)
